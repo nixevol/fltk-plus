@@ -215,11 +215,11 @@ class Fl_Date_Input::Date_Popup : public Fl_Menu_Window {
       fl_rectf(x(), y(), w(), h());
       int cell_w = w() / 7;
       int cell_h = (h() - kWeek) / 6;
-      static const char *names[] = {"一", "二", "三", "四", "五", "六", "日"};
       fl_font(labelfont(), labelsize());
       fl_color(FL_FOREGROUND_COLOR);
       for (int col = 0; col < 7; col++) {
-        fl_draw(names[col], x() + col * cell_w, y(), cell_w, kWeek, FL_ALIGN_CENTER);
+        fl_draw(owner_->weekday_label(col), x() + col * cell_w, y(), cell_w, kWeek,
+                FL_ALIGN_CENTER);
       }
       int selected = -1;
       int sy, sm, sd;
@@ -387,7 +387,7 @@ public:
       months_[i]->callback(month_cb, this);
       months_[i]->hide();
     }
-    today_ = new Fl_Button(kPad, grid_y + grid_h + 2, grid_w, kToday - 4, "今天");
+    today_ = new Fl_Button(kPad, grid_y + grid_h + 2, grid_w, kToday - 4, "Today");
     today_->callback(today_cb, this);
     end();
   }
@@ -446,6 +446,7 @@ public:
     }
     int ty, tm, td;
     Fl_Date_Input::today(ty, tm, td);
+    today_->copy_label(owner_->today_label());
     if (owner_->in_range(ty, tm, td)) today_->activate();
     else today_->deactivate();
     redraw();
@@ -517,6 +518,60 @@ public:
   }
 };
 
+static char default_weekday_text[7][32] = {
+  "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+};
+static char default_today_text[32] = "Today";
+
+void Fl_Date_Input::default_weekday_label(int index, const char *text) {
+  if (index < 0 || index > 6 || !text) return;
+  std::snprintf(default_weekday_text[index], sizeof(default_weekday_text[index]), "%s", text);
+}
+
+const char *Fl_Date_Input::default_weekday_label(int index) {
+  if (index < 0 || index > 6) return "";
+  return default_weekday_text[index];
+}
+
+void Fl_Date_Input::default_today_label(const char *text) {
+  if (!text) return;
+  std::snprintf(default_today_text, sizeof(default_today_text), "%s", text);
+}
+
+const char *Fl_Date_Input::default_today_label() {
+  return default_today_text;
+}
+
+void Fl_Date_Input::weekday_label(int index, const char *text) {
+  if (index < 0 || index > 6) return;
+  if (!text) weekday_set_ &= ~(1u << index);
+  else {
+    std::snprintf(weekday_text_[index], sizeof(weekday_text_[index]), "%s", text);
+    weekday_set_ |= 1u << index;
+  }
+  if (popup_ && popup_->shown()) popup_->refresh();
+}
+
+const char *Fl_Date_Input::weekday_label(int index) const {
+  if (index < 0 || index > 6) return "";
+  if (weekday_set_ & (1u << index)) return weekday_text_[index];
+  return default_weekday_label(index);
+}
+
+void Fl_Date_Input::today_label(const char *text) {
+  if (!text) today_set_ = 0;
+  else {
+    std::snprintf(today_text_, sizeof(today_text_), "%s", text);
+    today_set_ = 1;
+  }
+  if (popup_ && popup_->shown()) popup_->refresh();
+}
+
+const char *Fl_Date_Input::today_label() const {
+  if (today_set_) return today_text_;
+  return default_today_label();
+}
+
 void Fl_Date_Input::today(int &year, int &month, int &day) {
   std::time_t now = std::time(nullptr);
   std::tm local;
@@ -536,7 +591,8 @@ Fl_Date_Input::Fl_Date_Input(int X, int Y, int W, int H, const char *L)
     year_(0), month_(0), day_(0),
     minimum_year_(0), minimum_month_(0), minimum_day_(0),
     maximum_year_(0), maximum_month_(0), maximum_day_(0),
-    has_date_(0), has_minimum_(0), has_maximum_(0), allow_empty_(1) {
+    has_date_(0), has_minimum_(0), has_maximum_(0), allow_empty_(1),
+    today_set_(0), weekday_set_(0) {
   text_[0] = 0;
   minimum_text_[0] = 0;
   maximum_text_[0] = 0;

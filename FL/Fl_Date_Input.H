@@ -32,6 +32,10 @@
 
   The calendar is drawn with FLTK. This widget does not call platform date
   controls, so the same code runs on Windows, X11, macOS, and Wayland.
+
+  Calendar words default to English. Replace them with weekday_label() and
+  today_label(), or change the default for every new widget with the
+  default_* methods. The year and month heading stays numeric.
 */
 class FL_EXPORT Fl_Date_Input : public Fl_Group {
   class Date_Field;
@@ -54,6 +58,10 @@ class FL_EXPORT Fl_Date_Input : public Fl_Group {
   int has_minimum_;
   int has_maximum_;
   int allow_empty_;
+  int today_set_;
+  unsigned weekday_set_;
+  char today_text_[32];
+  char weekday_text_[7][32];
   char text_[16];
   char minimum_text_[16];
   char maximum_text_[16];
@@ -120,6 +128,21 @@ public:
 
   /** The local calendar date. */
   static void today(int &year, int &month, int &day);
+
+  /**
+    Weekday heading. Index 0 is Monday and index 6 is Sunday.
+    A null string clears this widget's own text and uses the default again.
+  */
+  void weekday_label(int index, const char *text);
+  const char *weekday_label(int index) const;
+  /** Label of the button that selects the local date. */
+  void today_label(const char *text);
+  const char *today_label() const;
+  /** Default weekday heading copied by widgets that have not set their own. */
+  static void default_weekday_label(int index, const char *text);
+  static const char *default_weekday_label(int index);
+  static void default_today_label(const char *text);
+  static const char *default_today_label();
 
 protected:
   void draw() override;
