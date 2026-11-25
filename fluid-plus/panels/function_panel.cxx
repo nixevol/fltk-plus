@@ -879,7 +879,7 @@ Fl_Window* make_widgetbin() {
       } // fluid::widget::Bin_Button* o
       { auto* o = new fluid::widget::Bin_Button(567, 46, 24, 24);
         (void)o;
-        o->tooltip("Date");
+        o->tooltip("Date Picker");
         o->box(FL_THIN_UP_BOX);
         o->color(FL_BACKGROUND_COLOR);
         o->selection_color(FL_BACKGROUND_COLOR);

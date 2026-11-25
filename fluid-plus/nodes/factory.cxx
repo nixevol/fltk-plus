@@ -47,6 +47,7 @@
 #include "rsrcs/pixmaps.h"
 
 #include <cstdlib>
+#include <cstring>
 
 #include <FL/Fl.H>
 #include <FL/Fl_Adjuster.H>
@@ -926,7 +927,7 @@ public:
   const std::string& type_name() override { static const std::string s = "Fl_Date_Input"; return s; }
   const std::string& alt_type_name() override { static const std::string s = "fltk::DateInput"; return s; }
   Fl_Widget *widget(int x, int y, int w, int h) override {
-    return new Fl_Date_Input(x, y, w, h, "date:");
+    return new Fl_Date_Input(x, y, w, h);
   }
   Widget_Node *_make() override { return new Date_Input_Node(); }
   void write_properties(fluid::io::Project_Writer &f) override {
@@ -940,6 +941,14 @@ public:
       f.write_string("date_maximum %d %d %d", year, month, day);
     if (input->get_date(year, month, day))
       f.write_string("date %d %d %d", year, month, day);
+    if (std::strcmp(input->today_label(), "Today") != 0) {
+      f.write_string("today_label");
+      f.write_word(input->today_label());
+    }
+    if (std::strcmp(input->weekday_labels(), "Mon,Tue,Wed,Thu,Fri,Sat,Sun") != 0) {
+      f.write_string("weekdays");
+      f.write_word(input->weekday_labels());
+    }
   }
   void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
     Fl_Date_Input *input = (Fl_Date_Input *)o;
@@ -961,6 +970,10 @@ public:
       month = atoi(f.read_word().c_str());
       day = atoi(f.read_word().c_str());
       input->value(year, month, day);
+    } else if (c == "today_label") {
+      input->today_label(f.read_word().c_str());
+    } else if (c == "weekdays") {
+      input->weekday_labels(f.read_word().c_str());
     } else {
       super::read_property(f, c);
     }
@@ -982,6 +995,11 @@ public:
       Fl_Date_Input::today(year, month, day);
       dest->value(year, month, day);
     }
+    if (std::strcmp(source->today_label(), "Today") != 0) dest->today_label(source->today_label());
+    else dest->today_label(nullptr);
+    if (std::strcmp(source->weekday_labels(), "Mon,Tue,Wed,Thu,Fri,Sat,Sun") != 0)
+      dest->weekday_labels(source->weekday_labels());
+    else dest->weekday_labels(nullptr);
     dest->textfont(source->textfont());
     dest->textsize(source->textsize());
     dest->textcolor(source->textcolor());

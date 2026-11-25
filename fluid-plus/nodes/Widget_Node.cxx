@@ -46,6 +46,8 @@
 #include <FL/Fl_Date_Input.H>
 #include "../../src/flstring.h"
 
+#include <cstring>
+
 #undef min
 #undef max
 
@@ -1152,6 +1154,18 @@ void Widget_Node::write_widget_code(fluid::io::Code_Writer& f) {
       f.write_c(f.indent() + var + "->maximum_date(" + std::to_string(year) + ", " + std::to_string(month) + ", " + std::to_string(day) + ");\n");
     if (date->get_date(year, month, day))
       f.write_c(f.indent() + var + "->value(" + std::to_string(year) + ", " + std::to_string(month) + ", " + std::to_string(day) + ");\n");
+    if (std::strcmp(date->today_label(), "Today") != 0) {
+      f.write_c(f.indent() + var + "->today_label(");
+      f.write_cstring(date->today_label());
+      f.write_c(");\n");
+    }
+    if (std::strcmp(date->weekday_labels(), "Mon,Tue,Wed,Thu,Fri,Sat,Sun") != 0) {
+      for (int index = 0; index < 7; index++) {
+        f.write_c(f.indent() + var + "->weekday_label(" + std::to_string(index) + ", ");
+        f.write_cstring(date->weekday_label(index));
+        f.write_c(");\n");
+      }
+    }
   }
 }
 

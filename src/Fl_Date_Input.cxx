@@ -215,11 +215,14 @@ class Fl_Date_Input::Date_Popup : public Fl_Menu_Window {
       fl_rectf(x(), y(), w(), h());
       int cell_w = w() / 7;
       int cell_h = (h() - kWeek) / 6;
-      fl_font(labelfont(), labelsize());
+      int heading = labelsize() > 0 && labelsize() < 13 ? labelsize() : 12;
+      fl_font(labelfont(), heading);
       fl_color(FL_FOREGROUND_COLOR);
       for (int col = 0; col < 7; col++) {
+        fl_push_clip(x() + col * cell_w, y(), cell_w, kWeek);
         fl_draw(owner_->weekday_label(col), x() + col * cell_w, y(), cell_w, kWeek,
-                FL_ALIGN_CENTER);
+                FL_ALIGN_CENTER | FL_ALIGN_CLIP);
+        fl_pop_clip();
       }
       int selected = -1;
       int sy, sm, sd;
@@ -505,7 +508,10 @@ public:
         if (key == FL_Enter || key == FL_KP_Enter) { commit_cursor(); return 1; }
       }
     }
-    if (event == FL_PUSH && !Fl::event_inside(this)) {
+    // event_x/event_y are relative to this window. Fl::event_inside(this)
+    // treats a window's x/y as child coordinates and rejects every click.
+    if (event == FL_PUSH &&
+        (Fl::event_x() < 0 || Fl::event_y() < 0 || Fl::event_x() >= w() || Fl::event_y() >= h())) {
       hide();
       return 1;
     }
@@ -572,6 +578,48 @@ const char *Fl_Date_Input::today_label() const {
   return default_today_label();
 }
 
+const char *Fl_Date_Input::weekday_labels() const {
+  std::snprintf(weekday_joined_, sizeof(weekday_joined_), "%s,%s,%s,%s,%s,%s,%s",
+                weekday_label(0), weekday_label(1), weekday_label(2), weekday_label(3),
+                weekday_label(4), weekday_label(5), weekday_label(6));
+  return weekday_joined_;
+}
+
+static void trim_ends(char *text) {
+  char *start = text;
+  while (*start == ' ' || *start == '\t') start++;
+  if (start != text) std::memmove(text, start, std::strlen(start) + 1);
+  size_t n = std::strlen(text);
+  while (n > 0 && (text[n - 1] == ' ' || text[n - 1] == '\t')) text[--n] = 0;
+}
+
+int Fl_Date_Input::weekday_labels(const char *text) {
+  if (!text) {
+    for (int i = 0; i < 7; i++) weekday_label(i, nullptr);
+    return 1;
+  }
+  char buf[224];
+  std::snprintf(buf, sizeof(buf), "%s", text);
+  char *parts[7];
+  int count = 0;
+  char *cursor = buf;
+  for (;;) {
+    if (count == 7) return 0;
+    parts[count++] = cursor;
+    char *comma = std::strchr(cursor, ',');
+    if (!comma) break;
+    *comma = 0;
+    cursor = comma + 1;
+  }
+  if (count != 7) return 0;
+  for (int i = 0; i < 7; i++) {
+    trim_ends(parts[i]);
+    if (!parts[i][0]) return 0;
+  }
+  for (int i = 0; i < 7; i++) weekday_label(i, parts[i]);
+  return 1;
+}
+
 void Fl_Date_Input::today(int &year, int &month, int &day) {
   std::time_t now = std::time(nullptr);
   std::tm local;
@@ -606,7 +654,12 @@ Fl_Date_Input::Fl_Date_Input(int X, int Y, int W, int H, const char *L)
   field_ = new Date_Field(this, X, Y, W - button_w, H);
   field_->color(FL_BACKGROUND2_COLOR);
   button_ = new Calendar_Button(this, X + W - button_w, Y, button_w, H);
+  button_->box(FL_FLAT_BOX);
   end();
+  layout_children();
+  int ty, tm, td;
+  today(ty, tm, td);
+  value(ty, tm, td);
 }
 
 Fl_Date_Input::~Fl_Date_Input() {
@@ -616,12 +669,17 @@ Fl_Date_Input::~Fl_Date_Input() {
 }
 
 void Fl_Date_Input::layout_children() {
-  int button_w = h();
-  if (button_w > w() / 2) button_w = w() / 2;
-  if (button_w < 8) button_w = 8;
-  if (button_w > w()) button_w = w();
-  field_->resize(x(), y(), w() - button_w, h());
-  button_->resize(x() + w() - button_w, y(), button_w, h());
+  int dx = Fl::box_dx(box());
+  int dy = Fl::box_dy(box());
+  int inner_w = w() - Fl::box_dw(box());
+  int inner_h = h() - Fl::box_dh(box());
+  if (inner_w < 1) inner_w = 1;
+  if (inner_h < 1) inner_h = 1;
+  int button_w = inner_h;
+  if (button_w > inner_w / 2) button_w = inner_w / 2;
+  if (button_w < 8) button_w = inner_w < 8 ? inner_w : 8;
+  field_->resize(x() + dx, y() + dy, inner_w - button_w, inner_h);
+  button_->resize(x() + dx + inner_w - button_w, y() + dy, button_w, inner_h);
 }
 
 void Fl_Date_Input::refresh_text() {
@@ -799,11 +857,14 @@ void Fl_Date_Input::open_popup() {
     Fl_Group::current(saved);
   }
   popup_->prepare();
+  // Child coordinates are already relative to the enclosing window.
+  // Only windows add another origin. Adding group coordinates places the
+  // calendar far below the field.
   int sx = x();
   int sy = y();
-  for (Fl_Widget *parent = this->parent(); parent; parent = parent->parent()) {
-    sx += parent->x();
-    sy += parent->y();
+  for (Fl_Window *win = window(); win; win = win->window()) {
+    sx += win->x();
+    sy += win->y();
   }
   int area_x, area_y, area_w, area_h;
   int screen = 0;
@@ -826,8 +887,11 @@ void Fl_Date_Input::close_popup() {
 }
 
 void Fl_Date_Input::draw() {
+  layout_children();
   field_->color(color());
   field_->textcolor(textcolor());
+  button_->color(color());
+  button_->box(FL_FLAT_BOX);
   Fl_Group::draw();
 }
 

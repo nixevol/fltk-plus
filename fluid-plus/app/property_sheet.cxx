@@ -118,7 +118,9 @@ enum Prop {
   PROP_DATE,
   PROP_EARLIEST,
   PROP_LATEST,
-  PROP_ALLOW_EMPTY
+  PROP_ALLOW_EMPTY,
+  PROP_TODAY_LABEL,
+  PROP_WEEKDAYS
 };
 
 struct NamedColor {
@@ -833,6 +835,8 @@ void Property_Page::add_widget_rows(Widget_Node *widget) {
     add_text(PROP_EARLIEST, "Earliest Date", date->minimum_text());
     add_text(PROP_LATEST, "Latest Date", date->maximum_text());
     add_switch(PROP_ALLOW_EMPTY, "Allow Empty", date->allow_empty() != 0);
+    add_text(PROP_TODAY_LABEL, "Today Button", date->today_label());
+    add_text(PROP_WEEKDAYS, "Weekday Labels", date->weekday_labels());
   }
   if (auto *window = dynamic_cast<Window_Node *>(widget)) {
     add_switch(PROP_MODAL, "Modal", window->modal != 0);
@@ -1319,6 +1323,21 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
     if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
       if (!date->maximum_date(text.c_str())) {
         if (input) input->value(date->maximum_text());
+        return;
+      }
+    }
+    break;
+  case PROP_TODAY_LABEL:
+    if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+      if (text.empty()) date->today_label(nullptr);
+      else date->today_label(text.c_str());
+    }
+    break;
+  case PROP_WEEKDAYS:
+    if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+      if (text.empty()) date->weekday_labels(nullptr);
+      else if (!date->weekday_labels(text.c_str())) {
+        if (input) input->value(date->weekday_labels());
         return;
       }
     }

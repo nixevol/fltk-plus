@@ -62,6 +62,7 @@ class FL_EXPORT Fl_Date_Input : public Fl_Group {
   unsigned weekday_set_;
   char today_text_[32];
   char weekday_text_[7][32];
+  mutable char weekday_joined_[224];
   char text_[16];
   char minimum_text_[16];
   char maximum_text_[16];
@@ -135,6 +136,12 @@ public:
   */
   void weekday_label(int index, const char *text);
   const char *weekday_label(int index) const;
+  /**
+    Seven labels separated by commas, Monday first.
+    Returns 0 when the text does not contain seven labels.
+  */
+  int weekday_labels(const char *text);
+  const char *weekday_labels() const;
   /** Label of the button that selects the local date. */
   void today_label(const char *text);
   const char *today_label() const;
