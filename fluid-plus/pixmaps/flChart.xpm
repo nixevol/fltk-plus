@@ -1,0 +1,43 @@
+/* XPM */
+static const char * const flChart_xpm[] = {
+/* width height ncolors chars_per_pixel */
+"32 32 4 1",
+/* colors */
+"c c none",
+". c #000000",
+"r c #d02020",
+"b c #2020c0",
+/* pixels */
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccc..........cc",
+"cccccccccccccccccccc.rrrrrrrr.cc",
+"cccccccccccccccccccc.rrrrrrrr.cc",
+"cccccccccccccccccccc.rrrrrrrr.cc",
+"cccccccccccccccccccc.rrrrrrrr.cc",
+"cccccccc..........cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccccccc.bbbbbbbb.cc.rrrrrrrr.cc",
+"cccc..........cccccc.rrrrrrrr.cc",
+"cccc.rrrrrrrr.cccccc.rrrrrrrr.cc",
+"cccc.rrrrrrrr.cccccc.rrrrrrrr.cc",
+"cccc.rrrrrrrr.cccccc.rrrrrrrr.cc",
+"cccc.rrrrrrrr.cccccc.rrrrrrrr.cc",
+"cccc.rrrrrrrr.cccccc.rrrrrrrr.cc",
+"cccc.rrrrrrrr.cccccc.rrrrrrrr.cc",
+"cccc..........................cc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc"
+};

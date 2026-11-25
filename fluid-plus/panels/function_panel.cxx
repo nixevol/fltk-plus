@@ -44,7 +44,7 @@ static void cb_widgetbin_panel(Fl_Window*, void*) {
 }
 
 Fl_Window* make_widgetbin() {
-  { auto* o = widgetbin_panel = new Fl_Window(600, 102, "Widget Bin");
+  { auto* o = widgetbin_panel = new Fl_Window(600, 190, "Widget Bin");
     (void)o;
     widgetbin_panel->callback((Fl_Callback*)cb_widgetbin_panel);
     widgetbin_panel->align(Fl_Align(FL_ALIGN_CLIP|FL_ALIGN_INSIDE));
@@ -264,7 +264,7 @@ Fl_Window* make_widgetbin() {
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o
-    { auto* o = new Fl_Group(171, 19, 54, 79, "Buttons");
+    { auto* o = new Fl_Group(171, 19, 54, 110, "Buttons");
       (void)o;
       o->labelsize(12);
       { auto* o = new fluid::widget::Bin_Button(173, 21, 24, 24);
@@ -356,6 +356,21 @@ Fl_Window* make_widgetbin() {
         o->align(Fl_Align(FL_ALIGN_CENTER));
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Round_Button"));
+      } // fluid::widget::Bin_Button* o
+      { auto* o = new fluid::widget::Bin_Button(173, 96, 24, 24);
+        (void)o;
+        o->tooltip("Shortcut Button");
+        o->box(FL_THIN_UP_BOX);
+        o->color(FL_BACKGROUND_COLOR);
+        o->selection_color(FL_BACKGROUND_COLOR);
+        o->labeltype(FL_NORMAL_LABEL);
+        o->labelfont(0);
+        o->labelsize(14);
+        o->labelcolor(FL_FOREGROUND_COLOR);
+        o->callback((Fl_Callback*)type_make_cb, (void*)("Fl_Shortcut_Button"));
+        o->align(Fl_Align(FL_ALIGN_CENTER));
+        o->when(FL_WHEN_RELEASE);
+        o->image(pixmap_for("Fl_Shortcut_Button"));
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o
@@ -511,6 +526,21 @@ Fl_Window* make_widgetbin() {
         o->align(Fl_Align(FL_ALIGN_CENTER));
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Value_Input"));
+      } // fluid::widget::Bin_Button* o
+      { auto* o = new fluid::widget::Bin_Button(307, 71, 24, 24);
+        (void)o;
+        o->tooltip("Positioner");
+        o->box(FL_THIN_UP_BOX);
+        o->color(FL_BACKGROUND_COLOR);
+        o->selection_color(FL_BACKGROUND_COLOR);
+        o->labeltype(FL_NORMAL_LABEL);
+        o->labelfont(0);
+        o->labelsize(14);
+        o->labelcolor(FL_FOREGROUND_COLOR);
+        o->callback((Fl_Callback*)type_make_cb, (void*)("Fl_Positioner"));
+        o->align(Fl_Align(FL_ALIGN_CENTER));
+        o->when(FL_WHEN_RELEASE);
+        o->image(pixmap_for("Fl_Positioner"));
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o
@@ -877,7 +907,12 @@ Fl_Window* make_widgetbin() {
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Progress"));
       } // fluid::widget::Bin_Button* o
-      { auto* o = new fluid::widget::Bin_Button(567, 46, 24, 24);
+      o->end();
+    } // Fl_Group* o
+    { auto* o = new Fl_Group(3, 140, 55, 40, "Time");
+      (void)o;
+      o->labelsize(12);
+      { auto* o = new fluid::widget::Bin_Button(5, 156, 24, 24);
         (void)o;
         o->tooltip("Date Picker");
         o->box(FL_THIN_UP_BOX);
@@ -892,7 +927,7 @@ Fl_Window* make_widgetbin() {
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Date_Input"));
       } // fluid::widget::Bin_Button* o
-      { auto* o = new fluid::widget::Bin_Button(542, 71, 24, 24);
+      { auto* o = new fluid::widget::Bin_Button(30, 156, 24, 24);
         (void)o;
         o->tooltip("Time Picker");
         o->box(FL_THIN_UP_BOX);
@@ -906,6 +941,26 @@ Fl_Window* make_widgetbin() {
         o->align(Fl_Align(FL_ALIGN_CENTER));
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Time_Input"));
+      } // fluid::widget::Bin_Button* o
+      o->end();
+    } // Fl_Group* o
+    { auto* o = new Fl_Group(63, 140, 30, 40, "Charts");
+      (void)o;
+      o->labelsize(12);
+      { auto* o = new fluid::widget::Bin_Button(65, 156, 24, 24);
+        (void)o;
+        o->tooltip("Chart");
+        o->box(FL_THIN_UP_BOX);
+        o->color(FL_BACKGROUND_COLOR);
+        o->selection_color(FL_BACKGROUND_COLOR);
+        o->labeltype(FL_NORMAL_LABEL);
+        o->labelfont(0);
+        o->labelsize(14);
+        o->labelcolor(FL_FOREGROUND_COLOR);
+        o->callback((Fl_Callback*)type_make_cb, (void*)("Fl_Chart"));
+        o->align(Fl_Align(FL_ALIGN_CENTER));
+        o->when(FL_WHEN_RELEASE);
+        o->image(pixmap_for("Fl_Chart"));
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o

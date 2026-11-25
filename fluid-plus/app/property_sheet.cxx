@@ -22,7 +22,13 @@
 #include <FL/Fl_Hold_Browser.H>
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Date_Input.H>
+#include <FL/Fl_Chart.H>
+#include <FL/Fl_Positioner.H>
+#include <FL/Fl_Shortcut_Button.H>
 #include <FL/Fl_Time_Input.H>
+#include <FL/fl_draw.H>
+
+#include <cstdlib>
 #include <FL/Fl_Int_Input.H>
 #include <FL/Fl_Output.H>
 #include <FL/Fl_Return_Button.H>
@@ -129,7 +135,17 @@ enum Prop {
   PROP_NOW_LABEL,
   PROP_HOUR_HEADING,
   PROP_MINUTE_HEADING,
-  PROP_SECOND_HEADING
+  PROP_SECOND_HEADING,
+  PROP_AUTOSIZE,
+  PROP_LOWER_BOUND,
+  PROP_UPPER_BOUND,
+  PROP_X_VALUE,
+  PROP_Y_VALUE,
+  PROP_X_MINIMUM,
+  PROP_X_MAXIMUM,
+  PROP_Y_MINIMUM,
+  PROP_Y_MAXIMUM,
+  PROP_RECORDED_KEY
 };
 
 struct NamedColor {
@@ -858,6 +874,25 @@ void Property_Page::add_widget_rows(Widget_Node *widget) {
     add_text(PROP_MINUTE_HEADING, "Minute Heading", time_input->minute_heading());
     add_text(PROP_SECOND_HEADING, "Second Heading", time_input->second_heading());
   }
+  if (auto *chart = dynamic_cast<Fl_Chart *>(box)) {
+    add_switch(PROP_AUTOSIZE, "Autosize", chart->autosize() != 0);
+    double lower = 0, upper = 0;
+    chart->bounds(&lower, &upper);
+    add_real(PROP_LOWER_BOUND, "Lower Bound", lower);
+    add_real(PROP_UPPER_BOUND, "Upper Bound", upper);
+  }
+  if (auto *pos = dynamic_cast<Fl_Positioner *>(box)) {
+    add_real(PROP_X_VALUE, "X Value", pos->xvalue());
+    add_real(PROP_Y_VALUE, "Y Value", pos->yvalue());
+    add_real(PROP_X_MINIMUM, "X Minimum", pos->xminimum());
+    add_real(PROP_X_MAXIMUM, "X Maximum", pos->xmaximum());
+    add_real(PROP_Y_MINIMUM, "Y Minimum", pos->yminimum());
+    add_real(PROP_Y_MAXIMUM, "Y Maximum", pos->ymaximum());
+  }
+  if (auto *key = dynamic_cast<Fl_Shortcut_Button *>(box)) {
+    const char *shown = fl_shortcut_label(key->value());
+    add_text(PROP_RECORDED_KEY, "Recorded Shortcut", shown ? shown : "");
+  }
   if (auto *window = dynamic_cast<Window_Node *>(widget)) {
     add_switch(PROP_MODAL, "Modal", window->modal != 0);
     add_switch(PROP_NON_MODAL, "Non Modal", window->non_modal != 0);
@@ -1395,6 +1430,49 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
   case PROP_SECOND_HEADING:
     if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box))
       time_input->second_heading(text.empty() ? nullptr : text.c_str());
+    break;
+  case PROP_AUTOSIZE:
+    if (auto *chart = dynamic_cast<Fl_Chart *>(box)) chart->autosize(yes ? 1 : 0);
+    break;
+  case PROP_LOWER_BOUND:
+  case PROP_UPPER_BOUND:
+    if (auto *chart = dynamic_cast<Fl_Chart *>(box)) {
+      if (!real) return;
+      double lower = 0, upper = 0;
+      chart->bounds(&lower, &upper);
+      if (prop == PROP_LOWER_BOUND) lower = real->value();
+      else upper = real->value();
+      chart->bounds(lower, upper);
+    }
+    break;
+  case PROP_X_VALUE:
+  case PROP_Y_VALUE:
+  case PROP_X_MINIMUM:
+  case PROP_X_MAXIMUM:
+  case PROP_Y_MINIMUM:
+  case PROP_Y_MAXIMUM:
+    if (auto *pos = dynamic_cast<Fl_Positioner *>(box)) {
+      if (!real) return;
+      double number_value = real->value();
+      if (prop == PROP_X_VALUE) pos->xvalue(number_value);
+      else if (prop == PROP_Y_VALUE) pos->yvalue(number_value);
+      else if (prop == PROP_X_MINIMUM) pos->xbounds(number_value, pos->xmaximum());
+      else if (prop == PROP_X_MAXIMUM) pos->xbounds(pos->xminimum(), number_value);
+      else if (prop == PROP_Y_MINIMUM) pos->ybounds(number_value, pos->ymaximum());
+      else pos->ybounds(pos->yminimum(), number_value);
+    }
+    break;
+  case PROP_RECORDED_KEY:
+    if (auto *key = dynamic_cast<Fl_Shortcut_Button *>(box)) {
+      unsigned shortcut = 0;
+      if (!text.empty()) {
+        if ((text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) || (text[0] >= '0' && text[0] <= '9'))
+          shortcut = (unsigned)strtoul(text.c_str(), nullptr, 0);
+        else
+          shortcut = fl_old_shortcut(text.c_str());
+      }
+      key->value(shortcut);
+    }
     break;
   case PROP_WEEKDAYS:
     if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {

@@ -1,0 +1,42 @@
+/* XPM */
+static const char * const flShortcutButton_xpm[] = {
+/* width height ncolors chars_per_pixel */
+"32 32 3 1",
+/* colors */
+"c c none",
+". c #000000",
+"w c #ffffff",
+/* pixels */
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccc....................cccc",
+"cccccccc.wwwwwwwwwwwwwwwwww.cccc",
+"cccccccc.wwwwwwwwwwwwwwwwww.cccc",
+"cccccccc.wwwww........wwwww.cccc",
+"cccccccc.wwwww.wwwwww.wwwww.cccc",
+"cccccccc.wwwww.wwwwww.wwwww.cccc",
+"cccccccc.wwwww.wwwwww.wwwww.cccc",
+"cccccccc.wwwww.wwwwww.wwwww.cccc",
+"cccccccc.wwwww.wwwwww.wwwww.cccc",
+"cccccccc.wwwww........wwwww.cccc",
+"cccccccc.wwwwwwwwwwwwwwwwww.cccc",
+"cccccccc.wwwwwwwwwwwwwwwwww.cccc",
+"cccccccc.wwwwwwwwwwwwwwwwww.cccc",
+"cccccccc.wwwwwwwwwwwwwwwwww.cccc",
+"cccccccc....................cccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc"
+};

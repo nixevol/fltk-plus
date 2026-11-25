@@ -44,6 +44,9 @@
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Flex.H>
 #include <FL/Fl_Date_Input.H>
+#include <FL/Fl_Chart.H>
+#include <FL/Fl_Positioner.H>
+#include <FL/Fl_Shortcut_Button.H>
 #include <FL/Fl_Time_Input.H>
 #include "../../src/flstring.h"
 
@@ -1200,6 +1203,26 @@ void Widget_Node::write_widget_code(fluid::io::Code_Writer& f) {
       f.write_cstring(time_input->second_heading());
       f.write_c(");\n");
     }
+  }
+  if (auto *chart = dynamic_cast<Fl_Chart *>(o)) {
+    if (!chart->autosize())
+      f.write_c(f.indent() + var + "->autosize(0);\n");
+    double lower = 0, upper = 0;
+    chart->bounds(&lower, &upper);
+    if (lower != 0 || upper != 0)
+      f.write_c(f.indent() + var + "->bounds(" + fluid::io::to_string_g(lower) + ", " + fluid::io::to_string_g(upper) + ");\n");
+  }
+  if (auto *pos = dynamic_cast<Fl_Positioner *>(o)) {
+    if (pos->xminimum() != 0 || pos->xmaximum() != 1)
+      f.write_c(f.indent() + var + "->xbounds(" + fluid::io::to_string_g(pos->xminimum()) + ", " + fluid::io::to_string_g(pos->xmaximum()) + ");\n");
+    if (pos->yminimum() != 0 || pos->ymaximum() != 1)
+      f.write_c(f.indent() + var + "->ybounds(" + fluid::io::to_string_g(pos->yminimum()) + ", " + fluid::io::to_string_g(pos->ymaximum()) + ");\n");
+    if (pos->xvalue() != 0.5 || pos->yvalue() != 0.5)
+      f.write_c(f.indent() + var + "->value(" + fluid::io::to_string_g(pos->xvalue()) + ", " + fluid::io::to_string_g(pos->yvalue()) + ");\n");
+  }
+  if (auto *key = dynamic_cast<Fl_Shortcut_Button *>(o)) {
+    if (key->value())
+      f.write_c(f.indent() + var + "->value(" + std::to_string(key->value()) + ");\n");
   }
 }
 

@@ -57,6 +57,9 @@
 #include <FL/Fl_Clock.H>
 #include <FL/Fl_Counter.H>
 #include <FL/Fl_Date_Input.H>
+#include <FL/Fl_Chart.H>
+#include <FL/Fl_Positioner.H>
+#include <FL/Fl_Shortcut_Button.H>
 #include <FL/Fl_Time_Input.H>
 #include <FL/Fl_Dial.H>
 #include <FL/Fl_File_Browser.H>
@@ -1139,6 +1142,196 @@ public:
 
 Time_Input_Node Time_Input_Node::prototype;
 
+
+// ---- Chart ----
+
+static Fl_Menu_Item chart_type_menu[] = {
+  {"Bar", 0, nullptr, (void*)FL_BAR_CHART},
+  {"Horizontal Bar", 0, nullptr, (void*)FL_HORBAR_CHART},
+  {"Line Chart", 0, nullptr, (void*)FL_LINE_CHART},
+  {"Filled Line", 0, nullptr, (void*)FL_FILL_CHART},
+  {"Spike", 0, nullptr, (void*)FL_SPIKE_CHART},
+  {"Pie", 0, nullptr, (void*)FL_PIE_CHART},
+  {"Special Pie", 0, nullptr, (void*)FL_SPECIALPIE_CHART},
+  {nullptr}
+};
+
+class Chart_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Chart_Node prototype;
+private:
+  Fl_Menu_Item *subtypes() override { return chart_type_menu; }
+  int textstuff(int what, Fl_Font& font, int& size, Fl_Color& color) override {
+    Fl_Chart *chart = (Fl_Chart *)(what == 4 ? ((Widget_Node *)factory)->o : o);
+    if (!chart) return 0;
+    switch (what) {
+      case 4:
+      case 0: font = chart->textfont(); size = chart->textsize(); color = chart->textcolor(); break;
+      case 1: chart->textfont(font); break;
+      case 2: chart->textsize(size); break;
+      case 3: chart->textcolor(color); break;
+    }
+    return 1;
+  }
+public:
+  void ideal_size(int &w, int &h) override {
+    w = 180; h = 120;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Chart"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::Chart"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    Fl_Chart *chart = new Fl_Chart(x, y, w, h);
+    chart->add(20, "A", FL_RED);
+    chart->add(40, "B", FL_GREEN);
+    chart->add(30, "C", FL_BLUE);
+    chart->add(50, "D", FL_YELLOW);
+    return chart;
+  }
+  Widget_Node *_make() override { return new Chart_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Chart *chart = (Fl_Chart *)o;
+    if (!chart->autosize()) f.write_string("autosize 0");
+    double lower = 0, upper = 0;
+    chart->bounds(&lower, &upper);
+    if (lower != 0 || upper != 0) f.write_string("bounds %g %g", lower, upper);
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    Fl_Chart *chart = (Fl_Chart *)o;
+    if (c == "autosize") {
+      chart->autosize((uchar)atoi(f.read_word().c_str()));
+    } else if (c == "bounds") {
+      double lower = atof(f.read_word().c_str());
+      double upper = atof(f.read_word().c_str());
+      chart->bounds(lower, upper);
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Chart *source = (Fl_Chart *)o;
+    Fl_Chart *dest = (Fl_Chart *)live_widget;
+    if (!source || !dest) return;
+    dest->type(source->type());
+    dest->autosize(source->autosize());
+    double lower = 0, upper = 0;
+    source->bounds(&lower, &upper);
+    dest->bounds(lower, upper);
+    dest->textfont(source->textfont());
+    dest->textsize(source->textsize());
+    dest->textcolor(source->textcolor());
+  }
+};
+
+Chart_Node Chart_Node::prototype;
+
+
+// ---- Positioner ----
+
+class Positioner_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Positioner_Node prototype;
+public:
+  void ideal_size(int &w, int &h) override {
+    w = 80; h = 80;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Positioner"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::Positioner"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    return new Fl_Positioner(x, y, w, h);
+  }
+  Widget_Node *_make() override { return new Positioner_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Positioner *pos = (Fl_Positioner *)o;
+    if (pos->xvalue() != 0.5 || pos->yvalue() != 0.5)
+      f.write_string("xyvalue %g %g", pos->xvalue(), pos->yvalue());
+    if (pos->xminimum() != 0 || pos->xmaximum() != 1)
+      f.write_string("xbounds %g %g", pos->xminimum(), pos->xmaximum());
+    if (pos->yminimum() != 0 || pos->ymaximum() != 1)
+      f.write_string("ybounds %g %g", pos->yminimum(), pos->ymaximum());
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    Fl_Positioner *pos = (Fl_Positioner *)o;
+    if (c == "xyvalue") {
+      double x = atof(f.read_word().c_str());
+      double y = atof(f.read_word().c_str());
+      pos->value(x, y);
+    } else if (c == "xbounds") {
+      double a = atof(f.read_word().c_str());
+      double b = atof(f.read_word().c_str());
+      pos->xbounds(a, b);
+    } else if (c == "ybounds") {
+      double a = atof(f.read_word().c_str());
+      double b = atof(f.read_word().c_str());
+      pos->ybounds(a, b);
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Positioner *source = (Fl_Positioner *)o;
+    Fl_Positioner *dest = (Fl_Positioner *)live_widget;
+    if (!source || !dest) return;
+    dest->xbounds(source->xminimum(), source->xmaximum());
+    dest->ybounds(source->yminimum(), source->ymaximum());
+    dest->value(source->xvalue(), source->yvalue());
+  }
+};
+
+Positioner_Node Positioner_Node::prototype;
+
+
+// ---- Shortcut button ----
+
+class Shortcut_Button_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Shortcut_Button_Node prototype;
+public:
+  void ideal_size(int &w, int &h) override {
+    auto layout = Fluid.proj.layout;
+    h = layout->labelsize + 8;
+    w = layout->labelsize * 8;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Shortcut_Button"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::ShortcutButton"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    return new Fl_Shortcut_Button(x, y, w, h);
+  }
+  Widget_Node *_make() override { return new Shortcut_Button_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Shortcut_Button *button = (Fl_Shortcut_Button *)o;
+    if (button->value()) f.write_string("key_value %u", button->value());
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    if (c == "key_value") {
+      ((Fl_Shortcut_Button *)o)->value((Fl_Shortcut)strtoul(f.read_word().c_str(), nullptr, 0));
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Shortcut_Button *source = (Fl_Shortcut_Button *)o;
+    Fl_Shortcut_Button *dest = (Fl_Shortcut_Button *)live_widget;
+    if (source && dest) dest->value(source->value());
+  }
+};
+
+Shortcut_Button_Node Shortcut_Button_Node::prototype;
+
 // ---- Spinner ----
 // (Spinner_Node and its spinner_type_menu are declared in factory.h so other
 // translation units can dynamic_cast to Spinner_Node.)
@@ -1236,6 +1429,9 @@ static Node *known_types[] = {
   (Node*)&Progress_Node::prototype,
   (Node*)&Date_Input_Node::prototype,
   (Node*)&Time_Input_Node::prototype,
+  (Node*)&Chart_Node::prototype,
+  (Node*)&Positioner_Node::prototype,
+  (Node*)&Shortcut_Button_Node::prototype,
 };
 
 /**
@@ -1481,6 +1677,7 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Check_Button_Node::prototype},
   {nullptr,0,cb,(void*)&Repeat_Button_Node::prototype},
   {nullptr,0,cb,(void*)&Round_Button_Node::prototype},
+  {nullptr,0,cb,(void*)&Shortcut_Button_Node::prototype},
   {nullptr},
   {"Valuators",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Slider_Node::prototype},
@@ -1493,6 +1690,7 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Roller_Node::prototype},
   {nullptr,0,cb,(void*)&Value_Input_Node::prototype},
   {nullptr,0,cb,(void*)&Value_Output_Node::prototype},
+  {nullptr,0,cb,(void*)&Positioner_Node::prototype},
   {nullptr},
   {"Text",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Input_Node::prototype},
@@ -1524,8 +1722,13 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Box_Node::prototype},
   {nullptr,0,cb,(void*)&Clock_Node::prototype},
   {nullptr,0,cb,(void*)&Progress_Node::prototype},
+  {nullptr},
+  {"Time",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Date_Input_Node::prototype},
   {nullptr,0,cb,(void*)&Time_Input_Node::prototype},
+  {nullptr},
+  {"Charts",0,nullptr,nullptr,FL_SUBMENU},
+  {nullptr,0,cb,(void*)&Chart_Node::prototype},
   {nullptr},
   {nullptr}};
 

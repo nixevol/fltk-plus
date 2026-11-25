@@ -64,7 +64,7 @@ Function {make_widgetbin()} {open
   Fluid.quit();
 else
   Fluid.toggle_widget_bin();} open selected
-    xywh {395 227 600 102} type Single align 80 non_modal visible
+    xywh {395 227 600 190} type Single align 80 non_modal visible
   } {
     Fl_Group {} {
       label Code open
@@ -196,7 +196,7 @@ else
     }
     Fl_Group {} {
       label Buttons open
-      xywh {171 19 54 79} labelsize 12
+      xywh {171 19 54 110} labelsize 12
     } {
       Fl_Button {} {
         user_data {"Fl_Button"}
@@ -238,6 +238,13 @@ else
         callback type_make_cb
         tooltip {Round Button} xywh {198 71 24 24} box THIN_UP_BOX
         code3 {o->image(pixmap_for("Fl_Round_Button"));}
+        class {fluid::widget::Bin_Button}
+      }
+      Fl_Button {} {
+        user_data {"Fl_Shortcut_Button"}
+        callback type_make_cb
+        tooltip {Shortcut Button} xywh {173 96 24 24} box THIN_UP_BOX
+        code3 {o->image(pixmap_for("Fl_Shortcut_Button"));}
         class {fluid::widget::Bin_Button}
       }
     }
@@ -313,6 +320,13 @@ else
         callback type_make_cb
         tooltip {Value Input} xywh {282 71 24 24} box THIN_UP_BOX
         code3 {o->image(pixmap_for("Fl_Value_Input"));}
+        class {fluid::widget::Bin_Button}
+      }
+      Fl_Button {} {
+        user_data {"Fl_Positioner"}
+        callback type_make_cb
+        tooltip Positioner xywh {307 71 24 24} box THIN_UP_BOX
+        code3 {o->image(pixmap_for("Fl_Positioner"));}
         class {fluid::widget::Bin_Button}
       }
     }
@@ -496,18 +510,35 @@ else
         code3 {o->image(pixmap_for("Fl_Progress"));}
         class {fluid::widget::Bin_Button}
       }
+    }
+    Fl_Group {} {
+      label Time open
+      xywh {3 140 55 40} labelsize 12
+    } {
       Fl_Button {} {
         user_data {"Fl_Date_Input"}
         callback type_make_cb
-        tooltip {Date Picker} xywh {567 46 24 24} box THIN_UP_BOX
+        tooltip {Date Picker} xywh {5 156 24 24} box THIN_UP_BOX
         code3 {o->image(pixmap_for("Fl_Date_Input"));}
         class {fluid::widget::Bin_Button}
       }
       Fl_Button {} {
         user_data {"Fl_Time_Input"}
         callback type_make_cb
-        tooltip {Time Picker} xywh {542 71 24 24} box THIN_UP_BOX
+        tooltip {Time Picker} xywh {30 156 24 24} box THIN_UP_BOX
         code3 {o->image(pixmap_for("Fl_Time_Input"));}
+        class {fluid::widget::Bin_Button}
+      }
+    }
+    Fl_Group {} {
+      label Charts open
+      xywh {63 140 30 40} labelsize 12
+    } {
+      Fl_Button {} {
+        user_data {"Fl_Chart"}
+        callback type_make_cb
+        tooltip Chart xywh {65 156 24 24} box THIN_UP_BOX
+        code3 {o->image(pixmap_for("Fl_Chart"));}
         class {fluid::widget::Bin_Button}
       }
     }
