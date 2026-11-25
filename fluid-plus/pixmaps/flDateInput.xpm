@@ -1,0 +1,43 @@
+/* XPM */
+static const char * const flDateInput_xpm[] = {
+/* width height ncolors chars_per_pixel */
+"32 32 4 1",
+/* colors */
+"c c none",
+". c #000000",
+"r c #d02020",
+"w c #ffffff",
+/* pixels */
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccc....cccc....cccccccccc",
+"cccccccccc.cc.cccc.cc.cccccccccc",
+"cccccccccc.cc.cccc.cc.cccccccccc",
+"cccccccccc....cccc....cccccccccc",
+"cccccccc................cccccccc",
+"cccccccc.rrrrrrrrrrrrrr.cccccccc",
+"cccccccc.rrrrrrrrrrrrrr.cccccccc",
+"cccccccc.rrrrrrrrrrrrrr.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc.w..ww..ww..www.cccccccc",
+"cccccccc.w..ww..ww..www.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc.w..ww..ww..www.cccccccc",
+"cccccccc.w..ww..ww..www.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc.w..ww..ww..www.cccccccc",
+"cccccccc.w..ww..ww..www.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc.wwwwwwwwwwwwww.cccccccc",
+"cccccccc................cccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc"
+};

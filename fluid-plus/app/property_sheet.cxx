@@ -21,6 +21,7 @@
 #include <FL/Fl_Group.H>
 #include <FL/Fl_Hold_Browser.H>
 #include <FL/Fl_Input.H>
+#include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Int_Input.H>
 #include <FL/Fl_Output.H>
 #include <FL/Fl_Return_Button.H>
@@ -113,7 +114,11 @@ enum Prop {
   PROP_TEXT_SIZE,
   PROP_TEXT_FONT,
   PROP_TEXT_COLOR,
-  PROP_MAX_SIZE
+  PROP_MAX_SIZE,
+  PROP_DATE,
+  PROP_EARLIEST,
+  PROP_LATEST,
+  PROP_ALLOW_EMPTY
 };
 
 struct NamedColor {
@@ -823,6 +828,12 @@ void Property_Page::add_widget_rows(Widget_Node *widget) {
   }
   if (auto *input = dynamic_cast<Fl_Input_ *>(box))
     add_int(PROP_MAX_SIZE, "Maximum Length", input->maximum_size());
+  if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+    add_text(PROP_DATE, "Date", date->text());
+    add_text(PROP_EARLIEST, "Earliest Date", date->minimum_text());
+    add_text(PROP_LATEST, "Latest Date", date->maximum_text());
+    add_switch(PROP_ALLOW_EMPTY, "Allow Empty", date->allow_empty() != 0);
+  }
   if (auto *window = dynamic_cast<Window_Node *>(widget)) {
     add_switch(PROP_MODAL, "Modal", window->modal != 0);
     add_switch(PROP_NON_MODAL, "Non Modal", window->non_modal != 0);
@@ -1287,6 +1298,40 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
     break;
   case PROP_MAX_SIZE:
     static_cast<Fl_Input_ *>(box)->maximum_size(std::max(0, number));
+    break;
+  case PROP_DATE:
+    if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+      if (!input || !date->value(text.c_str())) {
+        if (input) input->value(date->text());
+        return;
+      }
+    }
+    break;
+  case PROP_EARLIEST:
+    if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+      if (!date->minimum_date(text.c_str())) {
+        if (input) input->value(date->minimum_text());
+        return;
+      }
+    }
+    break;
+  case PROP_LATEST:
+    if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+      if (!date->maximum_date(text.c_str())) {
+        if (input) input->value(date->maximum_text());
+        return;
+      }
+    }
+    break;
+  case PROP_ALLOW_EMPTY:
+    if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
+      date->allow_empty(yes ? 1 : 0);
+      if (!yes && !date->has_date()) {
+        int year, month, day;
+        Fl_Date_Input::today(year, month, day);
+        date->value(year, month, day);
+      }
+    }
     break;
   case PROP_MODAL:
     if (auto *window = dynamic_cast<Window_Node *>(widget)) window->modal = yes ? 1 : 0;

@@ -68,6 +68,7 @@
 #include "../pixmaps/flClock.xpm"
 #include "../pixmaps/flHelp.xpm"
 #include "../pixmaps/flProgress.xpm"
+#include "../pixmaps/flDateInput.xpm"
 #include "../pixmaps/flSlider.xpm"
 #include "../pixmaps/flScrollBar.xpm"
 #include "../pixmaps/flValueSlider.xpm"
@@ -205,6 +206,7 @@ void loadPixmaps()
   pixmaps["Fl_Clock"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flClock_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Help_View"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flHelp_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Progress"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flProgress_xpm)); tmp->scale(16, 16);
+  pixmaps["Fl_Date_Input"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flDateInput_xpm)); tmp->scale(16, 16);
 
   pixmaps["Fl_Slider"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flSlider_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Scrollbar"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flScrollBar_xpm)); tmp->scale(16, 16);

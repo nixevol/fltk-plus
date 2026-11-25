@@ -34,6 +34,8 @@
 #include "app/Snap_Action.h"
 #include "app/designer_shell.h"
 #include "Fluid.h"
+#include "io/Project_Reader.h"
+#include "io/Project_Writer.h"
 #include "proj/undo.h"
 #include "nodes/Button_Node.h"
 #include "nodes/Function_Node.h"
@@ -44,6 +46,8 @@
 #include "nodes/Window_Node.h"
 #include "rsrcs/pixmaps.h"
 
+#include <cstdlib>
+
 #include <FL/Fl.H>
 #include <FL/Fl_Adjuster.H>
 #include <FL/Fl_Box.H>
@@ -51,6 +55,7 @@
 #include <FL/Fl_Check_Browser.H>
 #include <FL/Fl_Clock.H>
 #include <FL/Fl_Counter.H>
+#include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Dial.H>
 #include <FL/Fl_File_Browser.H>
 #include <FL/Fl_File_Input.H>
@@ -886,6 +891,105 @@ public:
 
 Progress_Node Progress_Node::prototype;
 
+
+// ---- Date input ----
+
+/**
+ \brief A year-month-day field with a calendar button.
+ The managed widget is an Fl_Group, but it does not accept project children.
+ */
+class Date_Input_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Date_Input_Node prototype;
+private:
+  int textstuff(int what, Fl_Font& font, int& size, Fl_Color& color) override {
+    Fl_Date_Input *input = (Fl_Date_Input *)(what == 4 ? ((Widget_Node *)factory)->o : o);
+    if (!input) return 0;
+    switch (what) {
+      case 4:
+      case 0: font = input->textfont(); size = input->textsize(); color = input->textcolor(); break;
+      case 1: input->textfont(font); break;
+      case 2: input->textsize(size); break;
+      case 3: input->textcolor(color); break;
+    }
+    return 1;
+  }
+public:
+  void ideal_size(int &w, int &h) override {
+    auto layout = Fluid.proj.layout;
+    h = layout->textsize_not_null() + 8;
+    w = layout->textsize_not_null() * 8 + 8;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Date_Input"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::DateInput"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    return new Fl_Date_Input(x, y, w, h, "date:");
+  }
+  Widget_Node *_make() override { return new Date_Input_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Date_Input *input = (Fl_Date_Input *)o;
+    int year, month, day;
+    if (!input->allow_empty()) f.write_string("allow_empty 0");
+    if (input->get_minimum(year, month, day))
+      f.write_string("date_minimum %d %d %d", year, month, day);
+    if (input->get_maximum(year, month, day))
+      f.write_string("date_maximum %d %d %d", year, month, day);
+    if (input->get_date(year, month, day))
+      f.write_string("date %d %d %d", year, month, day);
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    Fl_Date_Input *input = (Fl_Date_Input *)o;
+    int year, month, day;
+    if (c == "allow_empty") {
+      input->allow_empty(atoi(f.read_word().c_str()));
+    } else if (c == "date_minimum") {
+      year = atoi(f.read_word().c_str());
+      month = atoi(f.read_word().c_str());
+      day = atoi(f.read_word().c_str());
+      input->minimum_date(year, month, day);
+    } else if (c == "date_maximum") {
+      year = atoi(f.read_word().c_str());
+      month = atoi(f.read_word().c_str());
+      day = atoi(f.read_word().c_str());
+      input->maximum_date(year, month, day);
+    } else if (c == "date") {
+      year = atoi(f.read_word().c_str());
+      month = atoi(f.read_word().c_str());
+      day = atoi(f.read_word().c_str());
+      input->value(year, month, day);
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Date_Input *source = (Fl_Date_Input *)o;
+    Fl_Date_Input *dest = (Fl_Date_Input *)live_widget;
+    if (!source || !dest) return;
+    int year, month, day;
+    dest->allow_empty(source->allow_empty());
+    if (source->get_minimum(year, month, day)) dest->minimum_date(year, month, day);
+    else dest->minimum_date(0, 0, 0);
+    if (source->get_maximum(year, month, day)) dest->maximum_date(year, month, day);
+    else dest->maximum_date(0, 0, 0);
+    if (source->get_date(year, month, day)) dest->value(year, month, day);
+    else if (dest->allow_empty()) dest->clear_date();
+    else {
+      Fl_Date_Input::today(year, month, day);
+      dest->value(year, month, day);
+    }
+    dest->textfont(source->textfont());
+    dest->textsize(source->textsize());
+    dest->textcolor(source->textcolor());
+  }
+};
+
+Date_Input_Node Date_Input_Node::prototype;
+
 // ---- Spinner ----
 // (Spinner_Node and its spinner_type_menu are declared in factory.h so other
 // translation units can dynamic_cast to Spinner_Node.)
@@ -981,6 +1085,7 @@ static Node *known_types[] = {
   (Node*)&Box_Node::prototype,
   (Node*)&Clock_Node::prototype,
   (Node*)&Progress_Node::prototype,
+  (Node*)&Date_Input_Node::prototype,
 };
 
 /**
@@ -1269,6 +1374,7 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Box_Node::prototype},
   {nullptr,0,cb,(void*)&Clock_Node::prototype},
   {nullptr,0,cb,(void*)&Progress_Node::prototype},
+  {nullptr,0,cb,(void*)&Date_Input_Node::prototype},
   {nullptr},
   {nullptr}};
 

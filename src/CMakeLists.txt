@@ -45,6 +45,7 @@ set(CPPFILES
   Fl_Color_Chooser.cxx
   Fl_Copy_Surface.cxx
   Fl_Counter.cxx
+  Fl_Date_Input.cxx
   Fl_Device.cxx
   Fl_Dial.cxx
   Fl_Double_Window.cxx

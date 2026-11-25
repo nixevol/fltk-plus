@@ -496,6 +496,13 @@ else
         code3 {o->image(pixmap_for("Fl_Progress"));}
         class {fluid::widget::Bin_Button}
       }
+      Fl_Button {} {
+        user_data {"Fl_Date_Input"}
+        callback type_make_cb
+        tooltip Date xywh {567 46 24 24} box THIN_UP_BOX
+        code3 {o->image(pixmap_for("Fl_Date_Input"));}
+        class {fluid::widget::Bin_Button}
+      }
     }
   }
 }

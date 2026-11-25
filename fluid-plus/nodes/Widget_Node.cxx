@@ -43,6 +43,7 @@
 #include <FL/Fl_Spinner.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Flex.H>
+#include <FL/Fl_Date_Input.H>
 #include "../../src/flstring.h"
 
 #undef min
@@ -1140,6 +1141,17 @@ void Widget_Node::write_widget_code(fluid::io::Code_Writer& f) {
       f.write_c(f.indent() + var + "->hotspot(" + var + ");\n");
     else
       f.write_c(f.indent() + var + "->window()->hotspot(" + var + ");\n");
+  }
+  if (auto *date = dynamic_cast<Fl_Date_Input *>(o)) {
+    int year, month, day;
+    if (!date->allow_empty())
+      f.write_c(f.indent() + var + "->allow_empty(0);\n");
+    if (date->get_minimum(year, month, day))
+      f.write_c(f.indent() + var + "->minimum_date(" + std::to_string(year) + ", " + std::to_string(month) + ", " + std::to_string(day) + ");\n");
+    if (date->get_maximum(year, month, day))
+      f.write_c(f.indent() + var + "->maximum_date(" + std::to_string(year) + ", " + std::to_string(month) + ", " + std::to_string(day) + ");\n");
+    if (date->get_date(year, month, day))
+      f.write_c(f.indent() + var + "->value(" + std::to_string(year) + ", " + std::to_string(month) + ", " + std::to_string(day) + ");\n");
   }
 }
 
