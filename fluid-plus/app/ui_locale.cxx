@@ -181,7 +181,7 @@ std::string join_path(const std::string &dir, const char *name) {
   return dir + "/" + name;
 }
 
-std::string executable_dir() {
+std::string full_executable_path() {
 #if defined(_WIN32)
   wchar_t wide[32768];
   DWORD length = GetModuleFileNameW(nullptr, wide, 32768);
@@ -189,21 +189,25 @@ std::string executable_dir() {
   char utf8[65536];
   int bytes = fl_utf8fromwc(utf8, sizeof(utf8), wide, (unsigned)length);
   if (bytes <= 0) return std::string();
-  std::string path(utf8, (size_t)bytes);
+  return std::string(utf8, (size_t)bytes);
 #elif defined(__APPLE__)
   char buffer[PATH_MAX];
   uint32_t size = sizeof(buffer);
   if (_NSGetExecutablePath(buffer, &size) != 0) return std::string();
   char resolved[PATH_MAX];
   if (!realpath(buffer, resolved)) return std::string();
-  std::string path(resolved);
+  return std::string(resolved);
 #else
   char buffer[PATH_MAX];
   ssize_t length = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
   if (length <= 0) return std::string();
   buffer[length] = 0;
-  std::string path(buffer);
+  return std::string(buffer);
 #endif
+}
+
+std::string executable_dir() {
+  std::string path = full_executable_path();
   size_t slash = path.find_last_of("\\/");
   if (slash == std::string::npos) return std::string();
   return path.substr(0, slash);
@@ -996,6 +1000,10 @@ void install_language_choice() {
 }
 
 }  // namespace
+
+std::string executable_path() {
+  return full_executable_path();
+}
 
 std::string ui_font_summary() {
   return ui_font_summary_impl();

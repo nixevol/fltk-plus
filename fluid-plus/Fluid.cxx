@@ -19,6 +19,7 @@
 
 #include "Project.h"
 #include "fluid_icon.h"
+#include "app/agent_session.h"
 #include "message.h"
 
 #include "app/shell_command.h"
@@ -159,6 +160,15 @@ int Application::run(int argc,char **argv)
   int i = 1;
   if ((i = args.load(argc, argv)) == -1)
     return 1;
+
+  if (args.agent_cli || args.agent_mcp) {
+    agent_io = 1;
+    batch_mode = 1;
+    fl_register_images();
+    make_main_window();
+    int code = args.agent_mcp ? agent_mcp_main() : agent_cli_main(argc, argv);
+    exit(code);
+  }
 
   if (args.show_version) {
     printf("fluid v%d.%d.%d\n", FL_MAJOR_VERSION, FL_MINOR_VERSION, FL_PATCH_VERSION);
@@ -1303,13 +1313,14 @@ void Application::init_scheme() {
  */
 bool Application::console_mode() const {
 #ifdef _WIN32
+  if (agent_io) return true;
   if (FLUID_CONFIG_CONSOLE) {
     return batch_mode;
   } else {
     return false;
   }
 #else
-  return batch_mode;
+  return batch_mode || agent_io;
 #endif
 }
 

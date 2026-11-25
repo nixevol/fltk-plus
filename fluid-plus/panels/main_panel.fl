@@ -32,6 +32,9 @@ preprocessor {\#include "nodes/factory.h"} {use 4
 preprocessor {\#include "app/export_actions.h"} {use 4
 }
 
+preprocessor {\#include "app/agent_session.h"} {use 4
+}
+
 preprocessor {\#include "app/designer_shell.h"} {use 4
 }
 
@@ -540,6 +543,11 @@ o->flags |= FL_SUBMENU_POINTER;}
           MenuItem {} {
             label {&FLTK Programmers Manual...}
             callback {[](W,U) { Fluid.show_help("index.html"); }}
+            xywh {0 0 100 20}
+          }
+          MenuItem {} {
+            label {MCP Setup Help}
+            callback {[](W,U) { fluid::show_mcp_setup_help(); }}
             xywh {0 0 100 20}
           }
           MenuItem {} {

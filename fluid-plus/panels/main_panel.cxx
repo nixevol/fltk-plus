@@ -11,11 +11,12 @@
 #include "nodes/factory.h"
 #include "app/designer_shell.h"
 #include "app/export_actions.h"
+#include "app/agent_session.h"
 #include <cstring>
 #define W Fl_Widget*
 #define U void*
 
-Fl_Menu_Item GUI::menu_app_menu_bar[120] = {
+Fl_Menu_Item GUI::menu_app_menu_bar[140] = {
   { "&File", 0, nullptr, nullptr, 64, (uchar)FL_NORMAL_LABEL, 0, 14, 0 },
     { "&New", FL_COMMAND|'n', 
       [](W,U) { Fluid.user_new_project(); }
@@ -229,6 +230,9 @@ Fl_Menu_Item GUI::menu_app_menu_bar[120] = {
       , nullptr, 0, (uchar)FL_NORMAL_LABEL, 0, 14, 0 },
     { "&FLTK Programmers Manual...", 0, 
       [](W,U) { Fluid.show_help("index.html"); }
+      , nullptr, 0, (uchar)FL_NORMAL_LABEL, 0, 14, 0 },
+    { "MCP Setup Help", 0,
+      [](W,U) { fluid::show_mcp_setup_help(); }
       , nullptr, 0, (uchar)FL_NORMAL_LABEL, 0, 14, 0 },
     { "&About Fluid Plus...", 0, 
       [](W,U) { Fluid.about(); }

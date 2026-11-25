@@ -37,6 +37,10 @@ void set_widget_label(Fl_Widget *widget, const char *english);
 // Apply the saved interface font. An empty family keeps the automatic font for the language.
 void apply_ui_font();
 
+// Full path of the running program. This is the executable file, not a library
+// that happens to share the same base name.
+std::string executable_path();
+
 // Scan system fonts and load fonts from the fonts directory next to the executable.
 // Returns the length of the font table.
 int ensure_font_catalog();

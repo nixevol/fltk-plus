@@ -13,6 +13,9 @@
 #include "nodes/Widget_Node.h"
 #include "nodes/Window_Node.h"
 
+#include <FL/Fl_Image_Surface.H>
+#include <FL/Fl_PNG_Image.H>
+
 #include <FL/Fl.H>
 #include <FL/Fl_File_Chooser.H>
 #include <FL/Fl_Window.H>
@@ -212,6 +215,28 @@ void preview_project_windows() {
     return;
   }
   for (int i = 0; i < (int)windows.size(); i++) show_preview(windows[i], i);
+}
+
+bool write_preview_png(Window_Node *window, const std::string &path) {
+  if (!window) return false;
+  close_preview();
+  show_preview(window, 0);
+  if (g_preview.empty()) return false;
+  Fl::flush();
+  for (int i = 0; i < 8; i++) Fl::wait(0.02);
+  Fl_Window *shown = g_preview.back();
+  // fl_snapshot lives in autodoc.cxx, which is compiled only for debug builds.
+  // Draw the same way: an image surface of the live preview window.
+  Fl_Image_Surface *surface = new Fl_Image_Surface(shown->w(), shown->h());
+  Fl_Image_Surface::push_current(surface);
+  surface->draw(shown, 0, 0);
+  Fl_Image_Surface::pop_current();
+  Fl_RGB_Image *image = surface->image();
+  int wrote = image ? fl_write_png(path.c_str(), image) : -1;
+  delete image;
+  delete surface;
+  close_preview();
+  return wrote == 0;
 }
 
 }  // namespace fluid

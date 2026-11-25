@@ -14,7 +14,7 @@ public:
   Fl_Double_Window* build();
   Fl_Double_Window* app_window;
   fluid::widget::App_Menu_Bar* app_menu_bar;
-  static Fl_Menu_Item menu_app_menu_bar[120];
+  static Fl_Menu_Item menu_app_menu_bar[140];
   static Fl_Menu_Item* menu_item_save;
   static Fl_Menu_Item* menu_item_mergeback;
   static Fl_Menu_Item* menu_item_history;

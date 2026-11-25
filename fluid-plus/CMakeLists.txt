@@ -129,6 +129,7 @@ set(CPPFILES
   app/toolbox.cxx
   app/property_sheet.cxx
   app/code_console.cxx
+  app/agent_session.cxx
   io/Code_Writer.cxx
   io/file_chooser.cxx
   io/Project_Writer.cxx

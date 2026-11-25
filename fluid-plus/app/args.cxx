@@ -42,6 +42,14 @@ using namespace fluid::app;
 int Args::load(int argc,char **argv) {
   int i = 1;
   Fl::args_to_utf8(argc, argv); // for MSYS2/MinGW
+  if (argc >= 2 && strcmp(argv[1], "--agent") == 0) {
+    agent_cli = true;
+    return 0;
+  }
+  if (argc >= 2 && strcmp(argv[1], "--mcp") == 0) {
+    agent_mcp = true;
+    return 0;
+  }
   if (   (Fl::args(argc,argv,i,arg_cb) == 0)     // unsupported argument found
       || (Fluid.batch_mode && (i != argc-1))        // .fl filename missing
       || (!Fluid.batch_mode && (i < argc-1))        // more than one filename found
@@ -56,6 +64,8 @@ int Args::load(int argc,char **argv) {
     "  -u              update file.fl and exit; may be combined with -c or -cs\n"
     "  -c              write .cxx and .h and exit\n"
     "  -cs             write .cxx, .h, and strings and exit\n"
+    "  --agent <cmd>   run one AI command and print JSON\n"
+    "  --mcp           serve the same commands as an MCP server\n"
     "  --help          show this help text\n"
     "  --version, -v   print the Fluid version number\n"
     "\n"

@@ -1045,6 +1045,9 @@
     "New Directory?": "新建目录？",
     "Create a new directory.": "新建一个目录。",
     "Show hidden files": "显示隐藏文件",
-    "Preview the file": "预览"
+    "Preview the file": "预览",
+    "MCP Setup Help": "MCP 配置帮助",
+    "Add the configuration below to your AI client's MCP settings. The AI can then open a project, edit the interface, and preview windows.": "把下面的配置加到 AI 客户端的 MCP 设置里。之后 AI 就可以打开工程、修改界面并预览窗口。",
+    "Copy": "复制"
   }
 }

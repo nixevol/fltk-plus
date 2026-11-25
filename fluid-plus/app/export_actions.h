@@ -6,6 +6,8 @@
 
 class Window_Node;
 
+#include <string>
+
 namespace fluid {
 
 // Choose a directory and write the project's source and header there.
@@ -24,6 +26,10 @@ void preview_project_windows();
 
 // Preview this one design window. The window-tab context menu uses this.
 void preview_design_window(Window_Node *window);
+
+// Show the live preview, write a PNG, and close the preview.
+// Returns false when the window cannot be shown or the file cannot be written.
+bool write_preview_png(Window_Node *window, const std::string &path);
 
 }
 

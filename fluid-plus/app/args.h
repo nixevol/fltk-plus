@@ -49,6 +49,10 @@ public:
   bool project_relative { false };  // fluid -pr
   /// 0=ignore, 1=inform, 2=ask, 3=apply
   int mergeback_mode { 0 };         // fluid -mb=info, -mb=ask, -mb=apply
+  /// Set, if Fluid was started with --agent.
+  bool agent_cli { false };
+  /// Set, if Fluid was started with --mcp.
+  bool agent_mcp { false };
   /// Constructor.
   Args() = default;
   // Load args from command line into variables.

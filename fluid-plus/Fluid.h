@@ -113,6 +113,9 @@ public: // Member Variables
   app::Layout_List layout_list;
   /// Set, if Fluid runs in batch mode, and no user interface is activated.
   int batch_mode { 0 };             // fluid + any code generators (-u, -c, -cs)
+  /// Set while --agent or --mcp is running, so messages go to the console
+  /// even when this binary was built as a Windows GUI program.
+  int agent_io { 0 };
 
   // TODO: make this into a class: app::Settings
   /// Show guides in the design window when positioning widgets, saved in app preferences.

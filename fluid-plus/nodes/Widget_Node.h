@@ -83,6 +83,9 @@ public:
   /// Pointer to widget for interactive editing.
   Fl_Widget* o = nullptr;
 
+  // True when the project marks the widget visible. Batch mode keeps windows hidden.
+  bool shown_in_project() const { return o && (o->visible() || override_visible_); }
+
   /// Widget access mode, 0=private, 1=public, 2=protected
   int public_ = 1;
 
