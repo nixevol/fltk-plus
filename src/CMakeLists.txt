@@ -106,6 +106,7 @@ set(CPPFILES
   Fl_Text_Buffer.cxx
   Fl_Text_Display.cxx
   Fl_Text_Editor.cxx
+  Fl_Time_Input.cxx
   Fl_Tile.cxx
   Fl_Tiled_Image.cxx
   Fl_Timeout.cxx

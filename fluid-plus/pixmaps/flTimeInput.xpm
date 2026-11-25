@@ -1,0 +1,42 @@
+/* XPM */
+static const char * const flTimeInput_xpm[] = {
+/* width height ncolors chars_per_pixel */
+"32 32 3 1",
+/* colors */
+"c c none",
+". c #000000",
+"w c #ffffff",
+/* pixels */
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccc....cccccccccccccc",
+"ccccccccccc..........ccccccccccc",
+"ccccccccc..............ccccccccc",
+"cccccccc....wwwwwwww....cccccccc",
+"ccccccc...wwwwwwwwwwww...ccccccc",
+"cccccc...wwwwwwwwwwwwww...cccccc",
+"cccccc..wwwwwwwwwwwwwwww..cccccc",
+"ccccc...wwwwwwwwwwww.......ccccc",
+"ccccc..www....wwww......w..ccccc",
+"ccccc..www..............w..ccccc",
+"cccc...www.............ww...cccc",
+"cccc...wwww..........wwww...cccc",
+"cccc...wwwwww......wwwwww...cccc",
+"cccc...wwwwwwwwwwwwwwwwww...cccc",
+"ccccc..wwwwwwwwwwwwwwwwww..ccccc",
+"ccccc..wwwwwwwwwwwwwwwwww..ccccc",
+"ccccc...wwwwwwwwwwwwwwww...ccccc",
+"cccccc..wwwwwwwwwwwwwwww..cccccc",
+"cccccc...wwwwwwwwwwwwww...cccccc",
+"ccccccc...wwwwwwwwwwww...ccccccc",
+"cccccccc....wwwwwwww....cccccccc",
+"ccccccccc..............ccccccccc",
+"ccccccccccc..........ccccccccccc",
+"cccccccccccccc....cccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc",
+"cccccccccccccccccccccccccccccccc"
+};

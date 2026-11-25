@@ -44,6 +44,7 @@
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Flex.H>
 #include <FL/Fl_Date_Input.H>
+#include <FL/Fl_Time_Input.H>
 #include "../../src/flstring.h"
 
 #include <cstring>
@@ -1165,6 +1166,39 @@ void Widget_Node::write_widget_code(fluid::io::Code_Writer& f) {
         f.write_cstring(date->weekday_label(index));
         f.write_c(");\n");
       }
+    }
+  }
+  if (auto *time_input = dynamic_cast<Fl_Time_Input *>(o)) {
+    int hour, minute, second;
+    if (!time_input->allow_empty())
+      f.write_c(f.indent() + var + "->allow_empty(0);\n");
+    if (!time_input->show_seconds())
+      f.write_c(f.indent() + var + "->show_seconds(0);\n");
+    if (time_input->get_minimum(hour, minute, second))
+      f.write_c(f.indent() + var + "->minimum_time(" + std::to_string(hour) + ", " + std::to_string(minute) + ", " + std::to_string(second) + ");\n");
+    if (time_input->get_maximum(hour, minute, second))
+      f.write_c(f.indent() + var + "->maximum_time(" + std::to_string(hour) + ", " + std::to_string(minute) + ", " + std::to_string(second) + ");\n");
+    if (time_input->get_time(hour, minute, second))
+      f.write_c(f.indent() + var + "->value(" + std::to_string(hour) + ", " + std::to_string(minute) + ", " + std::to_string(second) + ");\n");
+    if (std::strcmp(time_input->now_label(), "Now") != 0) {
+      f.write_c(f.indent() + var + "->now_label(");
+      f.write_cstring(time_input->now_label());
+      f.write_c(");\n");
+    }
+    if (std::strcmp(time_input->hour_heading(), "Hour") != 0) {
+      f.write_c(f.indent() + var + "->hour_heading(");
+      f.write_cstring(time_input->hour_heading());
+      f.write_c(");\n");
+    }
+    if (std::strcmp(time_input->minute_heading(), "Minute") != 0) {
+      f.write_c(f.indent() + var + "->minute_heading(");
+      f.write_cstring(time_input->minute_heading());
+      f.write_c(");\n");
+    }
+    if (std::strcmp(time_input->second_heading(), "Second") != 0) {
+      f.write_c(f.indent() + var + "->second_heading(");
+      f.write_cstring(time_input->second_heading());
+      f.write_c(");\n");
     }
   }
 }

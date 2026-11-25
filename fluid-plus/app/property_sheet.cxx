@@ -22,6 +22,7 @@
 #include <FL/Fl_Hold_Browser.H>
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Date_Input.H>
+#include <FL/Fl_Time_Input.H>
 #include <FL/Fl_Int_Input.H>
 #include <FL/Fl_Output.H>
 #include <FL/Fl_Return_Button.H>
@@ -120,7 +121,15 @@ enum Prop {
   PROP_LATEST,
   PROP_ALLOW_EMPTY,
   PROP_TODAY_LABEL,
-  PROP_WEEKDAYS
+  PROP_WEEKDAYS,
+  PROP_TIME,
+  PROP_EARLIEST_TIME,
+  PROP_LATEST_TIME,
+  PROP_SHOW_SECONDS,
+  PROP_NOW_LABEL,
+  PROP_HOUR_HEADING,
+  PROP_MINUTE_HEADING,
+  PROP_SECOND_HEADING
 };
 
 struct NamedColor {
@@ -838,6 +847,17 @@ void Property_Page::add_widget_rows(Widget_Node *widget) {
     add_text(PROP_TODAY_LABEL, "Today Button", date->today_label());
     add_text(PROP_WEEKDAYS, "Weekday Labels", date->weekday_labels());
   }
+  if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box)) {
+    add_text(PROP_TIME, "Time", time_input->text());
+    add_text(PROP_EARLIEST_TIME, "Earliest Time", time_input->minimum_text());
+    add_text(PROP_LATEST_TIME, "Latest Time", time_input->maximum_text());
+    add_switch(PROP_SHOW_SECONDS, "Show Seconds", time_input->show_seconds() != 0);
+    add_switch(PROP_ALLOW_EMPTY, "Allow Empty", time_input->allow_empty() != 0);
+    add_text(PROP_NOW_LABEL, "Now Button", time_input->now_label());
+    add_text(PROP_HOUR_HEADING, "Hour Heading", time_input->hour_heading());
+    add_text(PROP_MINUTE_HEADING, "Minute Heading", time_input->minute_heading());
+    add_text(PROP_SECOND_HEADING, "Second Heading", time_input->second_heading());
+  }
   if (auto *window = dynamic_cast<Window_Node *>(widget)) {
     add_switch(PROP_MODAL, "Modal", window->modal != 0);
     add_switch(PROP_NON_MODAL, "Non Modal", window->non_modal != 0);
@@ -1333,6 +1353,49 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
       else date->today_label(text.c_str());
     }
     break;
+  case PROP_TIME:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box)) {
+      if (!input || !time_input->value(text.c_str())) {
+        if (input) input->value(time_input->text());
+        return;
+      }
+    }
+    break;
+  case PROP_EARLIEST_TIME:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box)) {
+      if (!time_input->minimum_time(text.c_str())) {
+        if (input) input->value(time_input->minimum_text());
+        return;
+      }
+    }
+    break;
+  case PROP_LATEST_TIME:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box)) {
+      if (!time_input->maximum_time(text.c_str())) {
+        if (input) input->value(time_input->maximum_text());
+        return;
+      }
+    }
+    break;
+  case PROP_SHOW_SECONDS:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box)) time_input->show_seconds(yes ? 1 : 0);
+    break;
+  case PROP_NOW_LABEL:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box))
+      time_input->now_label(text.empty() ? nullptr : text.c_str());
+    break;
+  case PROP_HOUR_HEADING:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box))
+      time_input->hour_heading(text.empty() ? nullptr : text.c_str());
+    break;
+  case PROP_MINUTE_HEADING:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box))
+      time_input->minute_heading(text.empty() ? nullptr : text.c_str());
+    break;
+  case PROP_SECOND_HEADING:
+    if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box))
+      time_input->second_heading(text.empty() ? nullptr : text.c_str());
+    break;
   case PROP_WEEKDAYS:
     if (auto *date = dynamic_cast<Fl_Date_Input *>(box)) {
       if (text.empty()) date->weekday_labels(nullptr);
@@ -1349,6 +1412,13 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
         int year, month, day;
         Fl_Date_Input::today(year, month, day);
         date->value(year, month, day);
+      }
+    } else if (auto *time_input = dynamic_cast<Fl_Time_Input *>(box)) {
+      time_input->allow_empty(yes ? 1 : 0);
+      if (!yes && !time_input->has_time()) {
+        int hour, minute, second;
+        Fl_Time_Input::now(hour, minute, second);
+        time_input->value(hour, minute, second);
       }
     }
     break;

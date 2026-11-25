@@ -892,6 +892,21 @@ Fl_Window* make_widgetbin() {
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Date_Input"));
       } // fluid::widget::Bin_Button* o
+      { auto* o = new fluid::widget::Bin_Button(542, 71, 24, 24);
+        (void)o;
+        o->tooltip("Time Picker");
+        o->box(FL_THIN_UP_BOX);
+        o->color(FL_BACKGROUND_COLOR);
+        o->selection_color(FL_BACKGROUND_COLOR);
+        o->labeltype(FL_NORMAL_LABEL);
+        o->labelfont(0);
+        o->labelsize(14);
+        o->labelcolor(FL_FOREGROUND_COLOR);
+        o->callback((Fl_Callback*)type_make_cb, (void*)("Fl_Time_Input"));
+        o->align(Fl_Align(FL_ALIGN_CENTER));
+        o->when(FL_WHEN_RELEASE);
+        o->image(pixmap_for("Fl_Time_Input"));
+      } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o
     widgetbin_panel->set_non_modal();

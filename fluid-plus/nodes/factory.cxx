@@ -57,6 +57,7 @@
 #include <FL/Fl_Clock.H>
 #include <FL/Fl_Counter.H>
 #include <FL/Fl_Date_Input.H>
+#include <FL/Fl_Time_Input.H>
 #include <FL/Fl_Dial.H>
 #include <FL/Fl_File_Browser.H>
 #include <FL/Fl_File_Input.H>
@@ -1008,6 +1009,136 @@ public:
 
 Date_Input_Node Date_Input_Node::prototype;
 
+
+// ---- Time input ----
+
+class Time_Input_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Time_Input_Node prototype;
+private:
+  int textstuff(int what, Fl_Font& font, int& size, Fl_Color& color) override {
+    Fl_Time_Input *input = (Fl_Time_Input *)(what == 4 ? ((Widget_Node *)factory)->o : o);
+    if (!input) return 0;
+    switch (what) {
+      case 4:
+      case 0: font = input->textfont(); size = input->textsize(); color = input->textcolor(); break;
+      case 1: input->textfont(font); break;
+      case 2: input->textsize(size); break;
+      case 3: input->textcolor(color); break;
+    }
+    return 1;
+  }
+  static int changed(const char *value, const char *builtin) {
+    return std::strcmp(value ? value : "", builtin) != 0;
+  }
+public:
+  void ideal_size(int &w, int &h) override {
+    auto layout = Fluid.proj.layout;
+    h = layout->textsize_not_null() + 8;
+    w = layout->textsize_not_null() * 8 + 8;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Time_Input"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::TimeInput"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    return new Fl_Time_Input(x, y, w, h);
+  }
+  Widget_Node *_make() override { return new Time_Input_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Time_Input *input = (Fl_Time_Input *)o;
+    int hour, minute, second;
+    if (!input->allow_empty()) f.write_string("allow_empty 0");
+    if (!input->show_seconds()) f.write_string("show_seconds 0");
+    if (input->get_minimum(hour, minute, second))
+      f.write_string("time_minimum %d %d %d", hour, minute, second);
+    if (input->get_maximum(hour, minute, second))
+      f.write_string("time_maximum %d %d %d", hour, minute, second);
+    if (input->get_time(hour, minute, second))
+      f.write_string("time %d %d %d", hour, minute, second);
+    if (changed(input->now_label(), "Now")) {
+      f.write_string("now_label");
+      f.write_word(input->now_label());
+    }
+    if (changed(input->hour_heading(), "Hour")) {
+      f.write_string("hour_heading");
+      f.write_word(input->hour_heading());
+    }
+    if (changed(input->minute_heading(), "Minute")) {
+      f.write_string("minute_heading");
+      f.write_word(input->minute_heading());
+    }
+    if (changed(input->second_heading(), "Second")) {
+      f.write_string("second_heading");
+      f.write_word(input->second_heading());
+    }
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    Fl_Time_Input *input = (Fl_Time_Input *)o;
+    int hour, minute, second;
+    if (c == "allow_empty") {
+      input->allow_empty(atoi(f.read_word().c_str()));
+    } else if (c == "show_seconds") {
+      input->show_seconds(atoi(f.read_word().c_str()));
+    } else if (c == "time_minimum") {
+      hour = atoi(f.read_word().c_str());
+      minute = atoi(f.read_word().c_str());
+      second = atoi(f.read_word().c_str());
+      input->minimum_time(hour, minute, second);
+    } else if (c == "time_maximum") {
+      hour = atoi(f.read_word().c_str());
+      minute = atoi(f.read_word().c_str());
+      second = atoi(f.read_word().c_str());
+      input->maximum_time(hour, minute, second);
+    } else if (c == "time") {
+      hour = atoi(f.read_word().c_str());
+      minute = atoi(f.read_word().c_str());
+      second = atoi(f.read_word().c_str());
+      input->value(hour, minute, second);
+    } else if (c == "now_label") {
+      input->now_label(f.read_word().c_str());
+    } else if (c == "hour_heading") {
+      input->hour_heading(f.read_word().c_str());
+    } else if (c == "minute_heading") {
+      input->minute_heading(f.read_word().c_str());
+    } else if (c == "second_heading") {
+      input->second_heading(f.read_word().c_str());
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Time_Input *source = (Fl_Time_Input *)o;
+    Fl_Time_Input *dest = (Fl_Time_Input *)live_widget;
+    if (!source || !dest) return;
+    int hour, minute, second;
+    dest->allow_empty(source->allow_empty());
+    dest->show_seconds(source->show_seconds());
+    if (source->get_minimum(hour, minute, second)) dest->minimum_time(hour, minute, second);
+    else dest->minimum_time("");
+    if (source->get_maximum(hour, minute, second)) dest->maximum_time(hour, minute, second);
+    else dest->maximum_time("");
+    if (source->get_time(hour, minute, second)) dest->value(hour, minute, second);
+    else if (dest->allow_empty()) dest->clear_time();
+    else {
+      Fl_Time_Input::now(hour, minute, second);
+      dest->value(hour, minute, second);
+    }
+    dest->now_label(changed(source->now_label(), "Now") ? source->now_label() : nullptr);
+    dest->hour_heading(changed(source->hour_heading(), "Hour") ? source->hour_heading() : nullptr);
+    dest->minute_heading(changed(source->minute_heading(), "Minute") ? source->minute_heading() : nullptr);
+    dest->second_heading(changed(source->second_heading(), "Second") ? source->second_heading() : nullptr);
+    dest->textfont(source->textfont());
+    dest->textsize(source->textsize());
+    dest->textcolor(source->textcolor());
+  }
+};
+
+Time_Input_Node Time_Input_Node::prototype;
+
 // ---- Spinner ----
 // (Spinner_Node and its spinner_type_menu are declared in factory.h so other
 // translation units can dynamic_cast to Spinner_Node.)
@@ -1104,6 +1235,7 @@ static Node *known_types[] = {
   (Node*)&Clock_Node::prototype,
   (Node*)&Progress_Node::prototype,
   (Node*)&Date_Input_Node::prototype,
+  (Node*)&Time_Input_Node::prototype,
 };
 
 /**
@@ -1393,6 +1525,7 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Clock_Node::prototype},
   {nullptr,0,cb,(void*)&Progress_Node::prototype},
   {nullptr,0,cb,(void*)&Date_Input_Node::prototype},
+  {nullptr,0,cb,(void*)&Time_Input_Node::prototype},
   {nullptr},
   {nullptr}};
 
