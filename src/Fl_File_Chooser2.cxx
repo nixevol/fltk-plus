@@ -1200,6 +1200,36 @@ Fl_File_Chooser::showChoiceCB()
 // 'Fl_File_Chooser::update_favorites()' - Update the favorites menu.
 //
 
+static void retitle_filename(Fl_Widget *widget, Fl_Widget *field) {
+  if (!widget || !field) return;
+  if (Fl_Group *group = widget->as_group()) {
+    for (int i = 0; i < group->children(); i++)
+      retitle_filename(group->child(i), field);
+  }
+  if (widget != field && widget->y() == field->y() + 10 && widget->label())
+    widget->label(Fl_File_Chooser::filename_label);
+}
+
+void Fl_File_Chooser::apply_standard_labels() {
+  if (showChoice) showChoice->label(show_label);
+  if (favoritesButton) favoritesButton->label(favorites_label);
+  if (previewButton) previewButton->label(preview_label);
+  if (showHiddenButton) showHiddenButton->label(hidden_label);
+  if (newButton) newButton->tooltip(new_directory_tooltip);
+  if (okButton) okButton->label(fl_ok);
+  if (cancelButton) cancelButton->label(fl_cancel);
+  if (favCancelButton) favCancelButton->label(fl_cancel);
+  if (favOkButton) favOkButton->label(save_label);
+  if (favWindow) favWindow->label(manage_favorites_label);
+  retitle_filename(window, fileName);
+  update_favorites();
+  if (pattern_[0]) {
+    char saved[FL_PATH_MAX];
+    strlcpy(saved, pattern_, sizeof(saved));
+    filter(saved);
+  }
+}
+
 void
 Fl_File_Chooser::update_favorites()
 {

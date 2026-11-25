@@ -1,3 +1,5 @@
+English | [简体中文](README.zh-CN.md)
+
 # README - Fast Light Tool Kit (FLTK) Version 1.5.0
 
 ## What is FLTK?

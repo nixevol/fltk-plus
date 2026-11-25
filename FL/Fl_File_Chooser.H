@@ -160,6 +160,8 @@ public:
   void rescan();
   void rescan_keep_filename();
   void show();
+  // Refresh an existing chooser from the current standard label pointers. Call after a language change.
+  void apply_standard_labels();
   void hide();
   int shown();
   void textcolor(Fl_Color c);

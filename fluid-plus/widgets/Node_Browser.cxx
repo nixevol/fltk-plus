@@ -1,0 +1,767 @@
+//
+// Widget Tree Browser code for the Fast Light Tool Kit (FLTK).
+//
+// Copyright 1998-2025 by Bill Spitzak and others.
+//
+// This library is free software. Distribution and use rights are outlined in
+// the file "COPYING" which should have been included with this file.  If this
+// file is missing or damaged, see the license at:
+//
+//     https://www.fltk.org/COPYING.php
+//
+// Please see the following page on how to report bugs and issues:
+//
+//     https://www.fltk.org/bugs.php
+//
+
+#include "widgets/Node_Browser.h"
+
+#include "Fluid.h"
+#include "app/designer_shell.h"
+#include "app/property_sheet.h"
+#include "app/ui_locale.h"
+#include "nodes/Widget_Node.h"
+#include "nodes/Window_Node.h"
+#include "nodes/Function_Node.h"
+#include "nodes/factory.h"
+#include "rsrcs/pixmaps.h"
+
+#include <FL/Fl.H>
+#include <FL/Fl_Browser_.H>
+#include <FL/Fl_Menu_Item.H>
+#include <FL/fl_draw.H>
+
+
+// ---- global variables
+
+/// Global access to the widget browser.
+fluid::widget::Node_Browser *widget_browser = nullptr;
+
+using namespace fluid;
+using namespace fluid::widget;
+
+
+/**
+ \class Node_Browser
+
+ A widget that displays the nodes in the widget tree.
+
+ The Widget Browser is derived from the FLTK basic browser, extending
+ tree browsing functionality by using the \c depth component of the double
+ linked list of \c Node items.
+
+ \see Node
+ */
+
+
+// ---- static variables
+
+Fl_Color  Node_Browser::label_color   = 72;
+Fl_Font   Node_Browser::label_font    = FL_HELVETICA;
+Fl_Color  Node_Browser::class_color   = FL_FOREGROUND_COLOR;
+Fl_Font   Node_Browser::class_font    = FL_HELVETICA_BOLD;
+Fl_Color  Node_Browser::func_color    = FL_FOREGROUND_COLOR;
+Fl_Font   Node_Browser::func_font     = FL_HELVETICA;
+Fl_Color  Node_Browser::name_color    = FL_FOREGROUND_COLOR;
+Fl_Font   Node_Browser::name_font     = FL_HELVETICA;
+Fl_Color  Node_Browser::code_color    = FL_FOREGROUND_COLOR;
+Fl_Font   Node_Browser::code_font     = FL_HELVETICA;
+Fl_Color  Node_Browser::comment_color = FL_DARK_GREEN;
+Fl_Font   Node_Browser::comment_font  = FL_HELVETICA;
+
+// ---- global functions
+
+/**
+ Shortcut to have the widget browser graphics refreshed soon.
+ */
+void redraw_browser() {
+  widget_browser->redraw();
+}
+
+/**
+ Shortcut to create the widget browser.
+ */
+Fl_Widget *make_widget_browser(int x,int y,int w,int h) {
+  return (widget_browser = new Node_Browser(x,y,w,h));
+}
+
+/**
+ Make sure that the caller is visible in the widget browser.
+ \param[in] caller scroll the browser in y so that caller
+ is visible (may be nullptr)
+ */
+void redraw_widget_browser(Node *caller)
+{
+  if (caller)
+    widget_browser->display(caller);
+  widget_browser->redraw();
+}
+
+/**
+ Select or deselect a node in the widget browser.
+ \param[in] o (de)select this node
+ \param[in] v the new selection state (1=select, 0=de-select)
+ */
+void select(Node *o, int v) {
+  widget_browser->select(o,v,1);
+}
+
+/**
+ Select a single node in the widget browser, deselect all others.
+ \param[in] o select this node
+ */
+void select_only(Node *o) {
+  widget_browser->select_only(o,1);
+}
+
+/**
+ Deselect all nodes in the widget browser.
+ */
+void deselect() {
+  widget_browser->deselect();
+}
+
+/**
+ Show the selected item in the browser window.
+
+ Make sure that the given item is visible in the browser by opening
+ all parent groups and moving the item into the visible space.
+
+ \param[in] t show this item
+ */
+void reveal_in_browser(Node *t) {
+  Node *p = t->parent;
+  if (p) {
+    for (;;) {
+      if (p->folded_)
+        p->folded_ = 0;
+      if (!p->parent) break;
+      p = p->parent;
+    }
+    p->update_visibility_flag();
+  }
+  widget_browser->display(t);
+  widget_browser->redraw();
+}
+
+// ---- local functions
+
+/**
+ Copy the given string str to buffer p with no more than maxl characters.
+
+ Add "..." if string was truncated.
+
+ Quote characters are NOT counted.
+
+ \param[out] p return the resulting string in this buffer, terminated with
+    a NUL byte
+ \param[in] str copy this string; utf8 aware
+ \param[in] maxl maximum number of letters to copy until we print
+    the ellipsis (...)
+ \param[in] quote if set, the resulting string is embedded in double quotes
+ \param[in] trunc_lf if set, truncates at first newline
+ \returns pointer to end of string (before terminating null byte).
+ \note the buffer p must be large enough to hold (4 * (maxl+1) + 1) bytes
+    or (4 * (maxl+1) + 3) bytes if quoted, e.g. "123..." because each UTF-8
+    character can consist of 4 bytes, "..." adds 3 bytes, quotes '""' add two
+    bytes, and the terminating null byte adds another byte.
+    This supports Unicode code points up to U+10FFFF (standard as of 10/2016).
+    Sanity checks for illegal UTF-8 sequences are included.
+ */
+static char *copy_trunc(char *p, const char *str, int maxl, int quote, int trunc_lf)
+{
+  int size = 0;                         // truncated string size in characters
+  int bs;                               // size of UTF-8 character in bytes
+  if (!p) return nullptr;                  // bad buffer
+  if (!str) {                           // no input string
+    if (quote) { *p++='"'; *p++='"'; }
+    *p = 0;
+    return p;
+  }
+  const char *end = str + strlen(str);  // end of input string
+  if (quote) *p++ = '"';                // opening quote
+  while (size < maxl) {                 // maximum <maxl> characters
+    if (*str == '\n') {
+      if (trunc_lf) {                   // handle trunc at \n
+        if (quote) *p++ = '"';          // closing quote
+        *p = 0;
+        return p;
+      }
+      *p++ = '\\'; *p++ = 'n';
+      str++; size+=2;
+      continue;
+    }
+    if (!(*str & (-32))) break;         // end of string (0 or control char)
+    bs = fl_utf8len(*str);              // size of next character
+    if (bs <= 0) break;                 // some error - leave
+    if (str + bs > end) break;          // UTF-8 sequence beyond end of string
+    while (bs--) *p++ = *str++;         // copy that character into the buffer
+    size++;                             // count copied characters
+  }
+  if (*str && *str!='\n') {             // string was truncated
+    strcpy(p,"..."); p += 3;
+  }
+  if (quote) *p++ = '"';                // closing quote
+  *p = 0;                               // terminating null byte
+  return p;
+}
+
+// ---- Node_Browser implementation
+
+/**
+ Create a new instance of the Node_Browser widget.
+
+ Fluid currently generates only one instance of this browser. If we want
+ to use multiple browser at some point, we need to refactor a few global
+ variables, i.e. Fluid.proj.tree.first and Fluid.proj.tree.last .
+
+ \param[in] X, Y, W, H position and size of widget
+ \param[in] l optional label
+ \todo It would be nice to be able to grab one or more nodes and move them
+    within the hierarchy via drag'n'drop.
+ */
+Node_Browser::Node_Browser(int X,int Y,int W,int H,const char*l) :
+  Fl_Browser_(X,Y,W,H,l)
+{
+  type(FL_MULTI_BROWSER);
+  Fl_Widget::callback(callback_stub);
+  when(FL_WHEN_RELEASE);
+}
+
+/**
+ Override the method to find the first item in the list of elements.
+ \return the first item
+ */
+void *Node_Browser::item_first() const {
+  if (scope_) {
+    // Make sure this node is still in the project before starting from it.
+    for (Node *n = Fluid.proj.tree.first; n; n = n->next)
+      if (n == scope_) return n;
+    scope_ = nullptr;
+  }
+  return Fluid.proj.tree.first;
+}
+
+/**
+ Show only one node and the nodes under it.
+ Nodes outside that range are deselected, so delete and move do not touch nodes that are not visible.
+ \param root root of the range; null means the whole project
+ */
+void Node_Browser::scope(Node *root) {
+  if (root) {
+    bool inside = false;
+    for (Node *n = Fluid.proj.tree.first; n; n = n->next) {
+      if (n == root) inside = true;
+      else if (inside && n->level <= root->level) inside = false;
+      if (!inside) n->selected = 0;
+    }
+  }
+  if (root == scope_) return;
+  scope_ = root;
+  scope_level_ = root ? root->level : 0;
+  new_list();
+  damage(FL_DAMAGE_SCROLL);
+  redraw();
+}
+
+/**
+ Override the method to find the next item in the list of elements.
+ \param l this item
+ \return the next item, irregardless of tree depth, or nullptr at the end
+ */
+void *Node_Browser::item_next(void *l) const {
+  Node *n = ((Node*)l)->next;
+  if (scope_ && n && n->level <= scope_level_) return nullptr;
+  return n;
+}
+
+/**
+ Override the method to find the previous item in the list of elements.
+ \param l this item
+ \return the previous item, irregardless of tree depth, or nullptr at the start
+ */
+void *Node_Browser::item_prev(void *l) const {
+  if (scope_ && l == scope_) return nullptr;
+  return ((Node*)l)->prev;
+}
+
+/**
+ Override the method to check if an item was selected.
+ \param l this item
+ \return 1 if selected, 0 if not
+ */
+int Node_Browser::item_selected(void *l) const {
+  return ((Node*)l)->selected;
+}
+
+/**
+ Override the method to mark an item selected.
+ \param l this item
+ \param[in] v 1 if selecting, 0 if not
+ */
+void Node_Browser::item_select(void *l,int v) {
+  ((Node*)l)->selected = v;
+}
+
+/**
+ Override the method to return the height of an item representation in Flixels.
+ \param l this item
+ \return height in FLTK units (used to be pixels before high res screens)
+ */
+int Node_Browser::item_height(void *l) const {
+  Node *t = (Node*)l;
+  if (t->visible) {
+    if (Fluid.show_comments && !t->comment().empty())
+      return textsize()*2+4;
+    else
+      return textsize()+5;
+  }
+  return 0;
+}
+
+/**
+ Override the method to return the estimated height of all items.
+ \return height in FLTK units
+ */
+int Node_Browser::incr_height() const {
+  return textsize() + 5 + linespacing();
+}
+
+/**
+ Draw an item in the widget browser.
+
+ A browser line starts with a variable size space. This space directly
+ relates to the level of the type entry.
+
+ If this type has the ability to store children, a triangle follows,
+ pointing right (closed) or pointing down (open, children shown).
+
+ Next follows an icon that is specific to the type. This makes it easy to
+ spot certain types.
+
+ Now follows some text. For classes and widgets, this is the type itself,
+ followed by the name of the object. Other objects show their content as
+ text, possibly abbreviated with an ellipsis.
+
+ \param v      v is a pointer to the actual widget type and can be cast safely
+    to Node
+ \param X,Y    these give the position in window coordinates of the top left
+    corner of this line
+ */
+// In the project tree, translate only the type words. Names and quoted labels are project content and stay as written.
+static std::string browser_type_label(Node *node) {
+  std::string name = subclassname(node);
+  if (name.compare(0, 3, "Fl_") == 0) name.erase(0, 3);
+  return fluid::ui_text(name.c_str());
+}
+
+void Node_Browser::item_draw(void *v, int X, int Y, int, int) const {
+  // cast to a more general type
+  Node *l = (Node *)v;
+
+  char buf[500]; // edit buffer: large enough to hold 80 UTF-8 chars + nul
+
+  // calculate the horizontal start position of this item
+  // 3 is the edge of the browser
+  // 13 is the width of the arrow that indicates children for the item
+  // 18 is the width of the icon
+  // 12 is the indent per level
+  X += 3 + 13 + 18 + l->level * 12;
+
+  // calculate the horizontal start position and width of the separator line
+  int x1 = X;
+  int w1 = w() - x1;
+
+  // items can contain a comment. If they do, the comment gets a second text
+  // line inside this browser line
+  int comment_incr = 0;
+  if (Fluid.show_comments && !l->comment().empty()) {
+    // -- comment
+    copy_trunc(buf, l->comment().c_str(), 80, 0, 1);
+    comment_incr = textsize()-1;
+    if (l->selected) fl_color(fl_contrast(comment_color, FL_SELECTION_COLOR));
+    else fl_color(comment_color);
+    fl_font(comment_font, textsize()-2);
+    fl_draw(buf, X, Y+12);
+    Y += comment_incr/2;
+    comment_incr -= comment_incr/2;
+  }
+
+  if (l->selected) fl_color(fl_contrast(FL_FOREGROUND_COLOR,FL_SELECTION_COLOR));
+  else fl_color(FL_FOREGROUND_COLOR);
+
+  // Width=10: Draw the triangle that indicates possible children
+  if (l->can_have_children()) {
+    X = X - 18 - 13;
+    if (!l->next || l->next->level <= l->level) {
+      if (l->folded_==(l==pushedtitle)) {
+        // an outlined triangle to the right indicates closed item, no children
+        fl_loop(X,Y+7,X+5,Y+12,X+10,Y+7);
+      } else {
+        // an outlined triangle to the bottom indicates open item, no children
+        fl_loop(X+2,Y+2,X+7,Y+7,X+2,Y+12);
+      }
+    } else {
+      if (l->folded_==(l==pushedtitle)) {
+        // a filled triangle to the right indicates closed item, with children
+        fl_polygon(X,Y+7,X+5,Y+12,X+10,Y+7);
+      } else {
+        // a filled triangle to the bottom indicates open item, with children
+        fl_polygon(X+2,Y+2,X+7,Y+7,X+2,Y+12);
+      }
+    }
+    X = X + 13 + 18;
+  }
+
+  // Width=18: Draw the icon associated with the type.
+  Fl_Pixmap *pm = pixmap_for(l->type_name().c_str());
+  if (pm) pm->draw(X-18, Y);
+
+  // Add tags on top of the icon for locked and protected types.
+  switch (l->is_public()) {
+    case 0: lock_pixmap->draw(X - 17, Y); break;
+    case 2: protected_pixmap->draw(X - 17, Y); break;
+  }
+
+  if (   l->is_widget()
+      && !dynamic_cast<Window_Node*>(l)
+      && ((Widget_Node*)l)->o
+      && !((Widget_Node*)l)->o->visible()
+      && (!l->parent || (   !dynamic_cast<Tabs_Node*>(l->parent)
+                         && !dynamic_cast<Wizard_Node*>(l->parent) ) )
+      )
+  {
+    invisible_pixmap->draw(X - 17, Y);
+  }
+
+  // Indent=12 per level: Now write the text that comes after the graphics representation
+  Y += comment_incr;
+  if (l->is_widget() || l->is_class()) {
+    std::string c = browser_type_label(l);
+    // -- class
+    fl_font(class_font, textsize());
+    if (l->selected) fl_color(fl_contrast(class_color, FL_SELECTION_COLOR));
+    else fl_color(class_color);
+    fl_draw(c.c_str(), X, Y+13);
+    X += int(fl_width(c.c_str())+fl_width('n'));
+    c = l->name();
+    if (!c.empty()) {
+      // -- name
+      fl_font(name_font, textsize());
+      if (l->selected) fl_color(fl_contrast(name_color, FL_SELECTION_COLOR));
+      else fl_color(name_color);
+      fl_draw(c.c_str(), X, Y+13);
+    } else if (!l->label().empty()) {
+      // -- label
+      c = l->label();
+      fl_font(label_font, textsize());
+      if (l->selected) fl_color(fl_contrast(label_color, FL_SELECTION_COLOR));
+      else fl_color(label_color);
+      copy_trunc(buf, c.c_str(), 32, 1, 0); // quoted string
+      fl_draw(buf, X, Y+13);
+    }
+  } else {
+    if (l->is_code_block() && (l->level==0 || l->parent->is_class())) {
+      // -- function names
+      fl_font(func_font, textsize());
+      if (l->selected) fl_color(fl_contrast(func_color, FL_SELECTION_COLOR));
+      else fl_color(func_color);
+      copy_trunc(buf, l->title().c_str(), 55, 0, 0);
+    } else {
+      if (dynamic_cast<Comment_Node*>(l)) {
+        // -- comment (in main line, not above entry)
+        fl_font(comment_font, textsize());
+        if (l->selected) fl_color(fl_contrast(comment_color, FL_SELECTION_COLOR));
+        else fl_color(comment_color);
+        copy_trunc(buf, l->title().c_str(), 55, 0, 0);
+      } else {
+        // -- code
+        fl_font(code_font, textsize());
+        if (l->selected) fl_color(fl_contrast(code_color, FL_SELECTION_COLOR));
+        else fl_color(code_color);
+        copy_trunc(buf, l->title().c_str(), 55, 0, 1);
+      }
+    }
+    fl_draw(buf, X, Y+13);
+  }
+
+  // draw a thin line below the item if this item is not selected
+  // (if it is selected this additional line would look bad)
+  if (!l->selected) {
+    fl_color(fl_lighter(FL_GRAY));
+    fl_line(x1,Y+16,x1+w1,Y+16);
+  }
+}
+
+/**
+ Override the method to return the width of an item representation in Flixels.
+ \param v this item
+ \return width in FLTK units
+ */
+int Node_Browser::item_width(void *v) const {
+
+  char buf[500]; // edit buffer: large enough to hold 80 UTF-8 chars + nul
+
+  Node *l = (Node *)v;
+
+  if (!l->visible) return 0;
+
+  int W = 3 + 13 + 18 + l->level * 12;
+
+  if (l->is_widget() || l->is_class()) {
+    std::string type_label = browser_type_label(l);
+    fl_font(textfont(), textsize());
+    W += int(fl_width(type_label.c_str()) + fl_width('n'));
+    const char *c = l->name().c_str();
+    if (c && *c) {
+      fl_font(textfont()|FL_BOLD, textsize());
+      W += int(fl_width(c));
+    } else if (!l->label().empty()) {
+      copy_trunc(buf, l->label().c_str(), 32, 1, 0); // quoted string
+      W += int(fl_width(buf));
+    }
+  } else {
+    copy_trunc(buf, l->title().c_str(), 55, 0, 0);
+    fl_font(textfont() | (l->is_code_block() && (l->level==0 || l->parent->is_class())?0:FL_BOLD), textsize());
+    W += int(fl_width(buf));
+  }
+
+  return W;
+}
+
+/**
+ Callback to tell the Fluid UI when the list of selected items changed.
+ */
+void Node_Browser::callback() {
+  selection_changed((Node*)selection());
+}
+
+// Context menu on the project tree. New keeps the original widget list under it.
+static void show_tree_menu() {
+  Fl_Menu_Item menu[] = {
+    {ui_text("&Undo"), 0, [](Fl_Widget *, void *) { Fluid.proj.undo.undo(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("&Redo"), 0, [](Fl_Widget *, void *) { Fluid.proj.undo.redo(); }, nullptr, FL_MENU_DIVIDER, 0, 0, 12, 0},
+    {ui_text("C&ut"), 0, [](Fl_Widget *, void *) { Fluid.cut_selected(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("&Copy"), 0, [](Fl_Widget *, void *) { Fluid.copy_selected(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("&Paste"), 0, [](Fl_Widget *, void *) { Fluid.paste_from_clipboard(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("Dup&licate"), 0, [](Fl_Widget *, void *) { Fluid.duplicate_selected(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("&Delete"), 0, [](Fl_Widget *, void *) { Fluid.delete_selected(); }, nullptr, FL_MENU_DIVIDER, 0, 0, 12, 0},
+    {ui_text("Pr&operties..."), 0, [](Fl_Widget *, void *) { Fluid.edit_selected(); }, nullptr, FL_MENU_DIVIDER, 0, 0, 12, 0},
+    {ui_text("&Earlier"), 0, [](Fl_Widget *, void *) { Fluid.proj.move_selected_earlier(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("&Later"), 0, [](Fl_Widget *, void *) { Fluid.proj.move_selected_later(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("&Sort"), 0, [](Fl_Widget *, void *) { Fluid.sort_selected(); }, nullptr, FL_MENU_DIVIDER, 0, 0, 12, 0},
+    {ui_text("&Group"), 0, [](Fl_Widget *, void *) { Fluid.proj.group_selected_nodes(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("Ung&roup"), 0, [](Fl_Widget *, void *) { Fluid.proj.ungroup_selected_nodes(); }, nullptr, FL_MENU_DIVIDER, 0, 0, 12, 0},
+    {ui_text("Select &All"), 0, [](Fl_Widget *, void *) { Fluid.proj.select_all(); }, nullptr, 0, 0, 0, 12, 0},
+    {ui_text("Select &None"), 0, [](Fl_Widget *, void *) { Fluid.proj.select_none(); }, nullptr, FL_MENU_DIVIDER, 0, 0, 12, 0},
+    {ui_text("&New"), 0, nullptr, (void *)New_Menu, FL_SUBMENU_POINTER, 0, 0, 12, 0},
+    {nullptr}
+  };
+  const Fl_Menu_Item *picked = menu->popup(Fl::event_x(), Fl::event_y());
+  if (picked && picked->callback()) picked->do_callback(nullptr);
+}
+
+/**
+ Override the event handling for this browser.
+
+ The vertical mouse position corresponds to an entry in the type tree.
+ The horizontal position has the following hot zones:
+ - 0-3 is the widget frame and ignored
+ - the next hot zone starts 12*indent pixels further to the right
+ - the next 13 pixels refer to the arrow that indicates children for the item
+ - 18 pixels follow for the icon
+ - the remaining part is filled with text
+
+ \param[in] e the incoming event type
+ \return 0 if the event is not supported, and 1 if the event was "used up"
+ */
+int Node_Browser::handle(int e) {
+  static Node *title;
+  Node *l;
+  int X,Y,W,H; bbox(X,Y,W,H);
+  switch (e) {
+  case FL_PUSH:
+    if (Fl::event_button() == FL_RIGHT_MOUSE && Fl::event_inside(X, Y, W, H)) {
+      l = (Node *)find_item(Fl::event_y());
+      // A click on a node that is not selected selects it first. A node already in the multi-selection stays there, so copy and delete match the selection.
+      if (l && !l->selected) select_only(l);
+      show_tree_menu();
+      return 1;
+    }
+    if (!Fl::event_inside(X,Y,W,H)) break;
+    l = (Node*)find_item(Fl::event_y());
+    if (l) {
+      X += 3 + 12*l->level - hposition();
+      if (l->can_have_children() && Fl::event_x()>X && Fl::event_x()<X+13) {
+        title = pushedtitle = l;
+        redraw_line(l);
+        return 1;
+      }
+    }
+    break;
+  case FL_DRAG:
+    if (!title) break;
+    l = (Node*)find_item(Fl::event_y());
+    if (l) {
+      X += 3 + 12*l->level - hposition();
+      if (l->can_have_children() && Fl::event_x()>X && Fl::event_x()<X+13) ;
+      else l = nullptr;
+    }
+    if (l != pushedtitle) {
+      if (pushedtitle) redraw_line(pushedtitle);
+      if (l) redraw_line(l);
+      pushedtitle = l;
+    }
+    return 1;
+  case FL_RELEASE:
+    if (!title) {
+      l = (Node*)find_item(Fl::event_y());
+      // Only a double-click opens properties. FL_COMMAND (Ctrl on Windows and Linux, Command on macOS) only adds or removes the selection.
+      if (l && l->selected && Fl::event_clicks() && !Fl::event_state(FL_COMMAND)) {
+        if (fluid::designer_ready()) {
+          if (auto *window = dynamic_cast<Window_Node *>(l)) window->open();
+          fluid::designer_edit_node(l);
+        } else {
+          l->open();
+        }
+      }
+      break;
+    }
+    l = pushedtitle;
+    title = pushedtitle = 0;
+    if (l) {
+      if (!l->folded_) {
+        l->folded_ = 1;
+        for (auto *k : l->descendants())
+          k->visible = 0;
+      } else {
+        l->folded_ = 0;
+        for (Node*k=l->next; k&&k->level>l->level;) {
+          k->visible = 1;
+          if (k->can_have_children() && k->folded_) {
+            Node *j;
+            for (j = k->next; j && j->level>k->level; j = j->next) {/*empty*/}
+            k = j;
+          } else
+            k = k->next;
+        }
+      }
+      redraw();
+    }
+    return 1;
+  }
+  return Fl_Browser_::handle(e);
+}
+
+/**
+ Save the current scrollbar position during rebuild.
+ */
+void Node_Browser::save_scroll_position() {
+  saved_h_scroll_ = hposition();
+  saved_v_scroll_ = vposition();
+}
+
+/**
+ Restore the previous scrollbar position after rebuild.
+ */
+void Node_Browser::restore_scroll_position() {
+  hposition(saved_h_scroll_);
+  vposition(saved_v_scroll_);
+}
+
+/**
+ Rebuild the browser layout to reflect multiple changes.
+ This clears internal caches, recalculates the scroll bar sizes, and
+ sends a redraw() request to the widget.
+ */
+void Node_Browser::rebuild() {
+  save_scroll_position();
+  new_list();
+  damage(FL_DAMAGE_SCROLL);
+  redraw();
+  restore_scroll_position();
+  fluid::designer_refresh();
+}
+
+/**
+ Rebuild the browser layout and make sure that the given item is visible.
+ \param[in] inNode pointer to a widget node derived from Node.
+ */
+void Node_Browser::display(Node *inNode) {
+  if (!inNode) {
+    // Alternative: find the first (last?) visible selected item.
+    return;
+  }
+  // remeber our current scroll position
+  int currentV = vposition(), newV = currentV;
+  int nodeV = 0;
+  // find the inNode in the tree and check, if it is already visible
+  Node *p=(Node*)item_first();
+  for ( ; p && p!=inNode; p=(Node*)item_next(p)) {
+    if (p->visible)
+      nodeV += item_height(p) + linespacing();
+  }
+  if (p) {
+    int xx, yy, ww, hh;
+    bbox(xx, yy, ww, hh);
+    int frame_top = xx-x();
+    int frame_bottom = frame_top + hh;
+    int node_height = item_height(inNode) + linespacing();
+    int margin_height = 2 * (item_quick_height(inNode) + linespacing());
+    if (margin_height>hh/2) margin_height = hh/2;
+    // is the inNode above the current scroll position?
+    if (nodeV<currentV+margin_height)
+      newV = nodeV - margin_height;
+    else if (nodeV>currentV+frame_bottom-margin_height-node_height)
+      newV = nodeV - frame_bottom + margin_height + node_height;
+    if (newV<0)
+      newV = 0;
+  }
+  if (newV!=currentV)
+    vposition(newV);
+}
+
+void Node_Browser::load_prefs() {
+  int c;
+  Fl_Preferences p(Fluid.preferences, "widget_browser");
+  p.get("label_color",  c, 72); label_color = c;
+  p.get("label_font",   c, FL_HELVETICA);
+  if (c<FL_HELVETICA || c>FL_ZAPF_DINGBATS) c = FL_HELVETICA;
+  label_font = c;
+  p.get("class_color",  c, FL_FOREGROUND_COLOR); class_color = c;
+  p.get("class_font",   c, FL_HELVETICA_BOLD);
+  if (c<FL_HELVETICA || c>FL_ZAPF_DINGBATS) c = FL_HELVETICA;
+  class_font = c;
+  p.get("func_color",   c, FL_FOREGROUND_COLOR); func_color = c;
+  p.get("func_font",    c, FL_HELVETICA);
+  if (c<FL_HELVETICA || c>FL_ZAPF_DINGBATS) c = FL_HELVETICA;
+  func_font = c;
+  p.get("name_color",   c, FL_FOREGROUND_COLOR); name_color = c;
+  p.get("name_font",    c, FL_HELVETICA);
+  if (c<FL_HELVETICA || c>FL_ZAPF_DINGBATS) c = FL_HELVETICA;
+  name_font = c;
+  p.get("code_color",   c, FL_FOREGROUND_COLOR); code_color = c;
+  p.get("code_font",    c, FL_HELVETICA);
+  if (c<FL_HELVETICA || c>FL_ZAPF_DINGBATS) c = FL_HELVETICA;
+  code_font = c;
+  p.get("comment_color",c, FL_DARK_GREEN); comment_color = c;
+  p.get("comment_font", c, FL_HELVETICA);
+  if (c<FL_HELVETICA || c>FL_ZAPF_DINGBATS) c = FL_HELVETICA;
+  comment_font = c;
+}
+
+void Node_Browser::save_prefs() {
+  Fl_Preferences p(Fluid.preferences, "widget_browser");
+  p.set("label_color",    (int)label_color);
+  p.set("label_font",     (int)label_font);
+  p.set("class_color",    (int)class_color);
+  p.set("class_font",     (int)class_font);
+  p.set("func_color",     (int)func_color);
+  p.set("func_font",      (int)func_font);
+  p.set("name_color",     (int)name_color);
+  p.set("name_font",      (int)name_font);
+  p.set("code_color",     (int)code_color);
+  p.set("code_font",      (int)code_font);
+  p.set("comment_color",  (int)comment_color);
+  p.set("comment_font",   (int)comment_font);
+}

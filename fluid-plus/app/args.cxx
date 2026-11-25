@@ -1,0 +1,190 @@
+//
+// Command Line Arguments Handling code for the Fast Light Tool Kit (FLTK).
+//
+// Copyright 1998-2026 by Bill Spitzak and others.
+//
+// This library is free software. Distribution and use rights are outlined in
+// the file "COPYING" which should have been included with this file.  If this
+// file is missing or damaged, see the license at:
+//
+//     https://www.fltk.org/COPYING.php
+//
+// Please see the following page on how to report bugs and issues:
+//
+//     https://www.fltk.org/bugs.php
+//
+
+#include "app/args.h"
+
+#include "main.h"
+#include "Fluid.h"
+#include "message.h"
+
+#include <FL/Fl.H>
+#include <FL/filename.H>
+
+using namespace fluid;
+using namespace fluid::app;
+
+/**
+ Load args from command line into variables.
+
+ \param[in] argc number of arguments in the list
+ \param[in] argv pointer to an array of arguments
+ \return 0 if the args were handled successfully, but no filename was given
+ \return -1, if there was an error and the usage message was shown.
+ \return the index of the first non-option argument, which is expected to be a .fl filename
+
+ \todo argument to override the application directory, helpful when running in batch mode
+ \todo argument to run a specific shell command as set in shell_command list
+ \todo maybe argument to extract embedded files, i.e. CMakeLists.txt ?
+ */
+int Args::load(int argc,char **argv) {
+  int i = 1;
+  Fl::args_to_utf8(argc, argv); // for MSYS2/MinGW
+  if (   (Fl::args(argc,argv,i,arg_cb) == 0)     // unsupported argument found
+      || (Fluid.batch_mode && (i != argc-1))        // .fl filename missing
+      || (!Fluid.batch_mode && (i < argc-1))        // more than one filename found
+      || (argv[i] && (argv[i][0] == '-'))) {  // unknown option
+    static const char *msg =
+    "Usage: %s [options] [action] [file.fl]\n"
+    "\n"
+    "Start without an action to open the GUI; in that case, file.fl is optional.\n"
+    "Specify one action to run in command-line mode.\n"
+    "\n"
+    "Actions:\n"
+    "  -u              update file.fl and exit; may be combined with -c or -cs\n"
+    "  -c              write .cxx and .h and exit\n"
+    "  -cs             write .cxx, .h, and strings and exit\n"
+    "  --help          show this help text\n"
+    "  --version, -v   print the Fluid version number\n"
+    "\n"
+    "Options:\n"
+    "  -o <name>       .cxx output filename, or extension if <name> starts with '.'\n"
+    "  -h <name>       .h output filename, or extension if <name> starts with '.'\n"
+    "  -s <name>       i18n strings filename, or extension if <name> starts with '.'\n"
+    "  -pr             make all output file paths relative to the .fl project file path\n"
+    "  -mb=info        report MergeBack changes, but do not apply them\n"
+    "  -mb=ask         ask before applying MergeBack changes\n"
+    "  -mb=apply       apply MergeBack changes automatically\n"
+    "  -d              enable internal debugging\n"
+    "\n"
+    "FLTK Options:\n"
+    "  -bg color       set background color\n"
+    "  -fg color       set foreground color\n"
+    "  -scheme scheme  set FLTK scheme (base, gtk+, etc.)\n"
+    "  -scaling_factor (0.25...4.0)\n"
+    ;
+    const char *app_name = nullptr;
+    if ( (argc > 0) && argv[0] && argv[0][0] )
+      app_name = fl_filename_name(argv[0]);
+    if ( !app_name || !app_name[0])
+      app_name = "fluid";
+#ifdef _MSC_VER
+    if (FLUID_CONFIG_CONSOLE) {
+      fprintf(stderr, msg, app_name);
+    } else {
+      fluid_message(msg, app_name);
+    }
+#else
+    fprintf(stderr, msg, app_name);
+#endif
+    return -1;
+  }
+  if (argv[i] && (argv[i][0])) {
+    // a filename was given
+    return i;
+  }
+  return 0;
+}
+
+int Args::arg_cb(int argc, char** argv, int& i) {
+  return Fluid.args.arg(argc, argv, i);
+}
+
+/**
+ Handle command line arguments.
+ \param[in] argc number of arguments in the list
+ \param[in] argv pointer to an array of arguments
+ \param[inout] i current argument index
+ \return number of arguments used; if 0, the argument is not supported
+ */
+int Args::arg(int argc, char** argv, int& i) {
+  if (argv[i][0] != '-')
+    return 0;
+  if (argv[i][1] == 'd' && !argv[i][2]) {
+    Fluid.debug_external_editor=1;
+    i++; return 1;
+  }
+  if (strcmp(argv[i], "-pr")==0) {
+    project_relative = true;
+    i++; return 1;
+  }
+  if (argv[i][1] == 'u' && !argv[i][2]) {
+    update_file++;
+    Fluid.batch_mode++;
+    i++; return 1;
+  }
+  if (argv[i][1] == 'c' && !argv[i][2]) {
+    compile_file++;
+    Fluid.batch_mode++;
+    i++; return 1;
+  }
+  if ((strcmp(argv[i], "-v")==0) || (strcmp(argv[i], "--version")==0)) {
+    show_version = 1;
+    i++; return 1;
+  }
+  if (argv[i][1] == 'c' && argv[i][2] == 's' && !argv[i][3]) {
+    compile_file++;
+    compile_strings++;
+    Fluid.batch_mode++;
+    i++; return 1;
+  }
+  if (argv[i][1] == 'o' && !argv[i][2] && i+1 < argc) {
+    code_filename = argv[i+1];
+    Fluid.batch_mode++;
+    i += 2; return 2;
+  }
+  if (argv[i][1] == 's' && !argv[i][2] && i+1 < argc) {
+    strings_filename = argv[i+1];
+    Fluid.batch_mode++;
+    i += 2; return 2;
+  }
+  if (strcmp(argv[i], "-mb=info")==0) {
+    mergeback_mode = 1; // info
+    i++; return 1;
+  }
+  if (strcmp(argv[i], "-mb=ask")==0) {
+    mergeback_mode = 2; // ask
+    i++; return 1;
+  }
+  if (strcmp(argv[i], "-mb=apply")==0) {
+    mergeback_mode = 3; // apply
+    i++; return 1;
+  }
+#ifndef NDEBUG
+  // Hidden when not in debug mode: create screenshots for the Fluid
+  // documentation pages. Must be followed by output path. No other args
+  // should be given.
+  if ((i+1 < argc) && (strcmp(argv[i], "--autodoc") == 0)) {
+    autodoc_path = argv[i+1];
+    i += 2; return 2;
+  }
+#endif
+  if (strcmp(argv[i], "--help")==0) {
+    return 0;
+  }
+  if (argv[i][1] == 'h' && !argv[i][2]) {
+    if ( (i+1 < argc) && (argv[i+1][0] != '-') ) {
+      header_filename = argv[i+1];
+      Fluid.batch_mode++;
+      i += 2;
+      return 2;
+    } else {
+      // a lone "-h" without a filename will output the help string
+      return 0;
+    }
+  }
+  return 0;
+}
+

@@ -240,6 +240,7 @@ set(FLTK_FLUID_EXECUTABLE "")
 
 if(FLTK_BUILD_FLUID)
   add_subdirectory(fluid)
+  add_subdirectory(fluid-plus)
 endif(FLTK_BUILD_FLUID)
 
 # Set FLTK_FLUID_EXECUTABLE in the cache for user projects.

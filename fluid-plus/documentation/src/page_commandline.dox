@@ -1,0 +1,159 @@
+/**
+
+ \page page_commandline Command Line
+
+ \tableofcontents
+
+ FLUID can be used in interactive and in command line mode. If launched with
+ `-c`, followed by a project filename, FLUID will convert the project file
+ into C++ source files without ever opening a window (or opening an X11 server
+ connection under Linux/X11). This makes FLUID a great command line tool
+ for build processes with complex project files that reference
+ external resources. For example, an image referenced by a `.fl` file can be
+ modified and recompiled into the application binary without the need to reload
+ it in an interactive FLUID session.
+
+ <!-- ---------------------------------------------------------------------- -->
+ \section commandline_options Command Line Options
+
+ To launch FLUID in interactive mode from the command line, you can give it an
+ optional name of a project file. If no name is given, it will launch with an
+ empty project, or with the last open project, if so selected in the
+ application setting dialog.
+
+ The ampersand `&` is optional on Linux machines and lets FLUID run in its
+ own new process, giving the shell back to the caller.
+
+ ```
+ fluid filename.fl &
+ ```
+
+If the file does not exist you will get an error pop-up, but if you dismiss it
+you will be editing a blank file of that name.
+
+FLUID understands all of the standard FLTK switches before the filename:
+
+```
+-display host:n.n
+-geometry WxH+X+Y
+-title windowtitle
+-name classname
+-iconic
+-fg color
+-bg color
+-bg2 color
+-scheme schemename
+```
+
+ <!-- ---------------------------------------------------------------------- -->
+ \section commandline_passive Compile Tool Options
+
+FLUID can also be used as a command-line tool to generate `.cxx` and `.h`
+files directly from a `.fl` file. To do this, run:
+
+```
+fluid -c filename.fl
+```
+
+This is equivalent to the menu command __File > Write Code...__.
+FLUID reads `filename.fl` and writes `filename.cxx` and `filename.h`.
+
+If there are any errors while reading or writing the files, FLUID prints an
+error message and exits with a non-zero status code. If the generated C++ or
+header files are identical to the existing files, they are not overwritten to
+avoid unnecessary recompilation.
+
+The output file names are stored in the `.fl` file, but they can be
+overridden from the command line:
+
+- `-o filename` overrides the generated C++ file extension, name, or path
+- `-h filename` overrides the generated header file extension, name, or path
+- `-s filename` overrides the generated translation strings file extension, name, or path
+
+In command line mode, relative output paths are interpreted relative to the
+current working directory. `-pr` changes this behavior and makes relative
+output paths use the directory of the `.fl` project file instead, as in
+interactive mode.
+
+For details on how file names and paths are generated, see \ref setting_project.
+
+
+The following lines in a Makefile can be used to automate the creation of the
+source and header files:
+
+```
+my_panels.h my_panels.cxx: my_panels.fl
+        fluid -c my_panels.fl
+```
+
+or as a more general rule:
+
+```
+.SUFFIXES: .fl .cxx .h
+.fl.h .fl.cxx:
+        fluid -c $<
+```
+
+To automate this in `CMakeLists.txt`, add a custom command for the `.fl` file
+and list the generated `.cxx` file as a source of your target:
+
+```cmake
+find_package(FLTK CONFIG REQUIRED)
+
+add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/MyUI.cxx ${CMAKE_CURRENT_BINARY_DIR}/MyUI.h
+        COMMAND fltk::fluid -c ${CMAKE_CURRENT_SOURCE_DIR}/MyUI.fl
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/MyUI.fl
+        VERBATIM
+)
+
+add_executable(myapp
+        main.cxx
+        ${CMAKE_CURRENT_BINARY_DIR}/MyUI.cxx
+)
+
+target_include_directories(myapp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(myapp PRIVATE fltk::fltk)
+```
+
+FLUID also has basic support for internationalization:
+
+```
+fluid -cs filename.fl
+```
+
+This writes label strings and tooltip text to `filename.txt`, `filename.po`,
+or `filename.msg`, depending on the selected i18n type. See the menu command
+__File > Write Strings...__ or the *Locale* tab in the *Settings* dialog.
+
+Another useful option for developers with many `.fl` files is the ability to
+upgrade them to the current FLUID file format. FLUID reads `filename.fl`,
+writes it back, and exits immediately. This updates the file to the current
+syntax and options and writes the current FLTK version into the file header.
+Use
+
+```
+fluid -u filename.fl
+```
+
+to upgrade `filename.fl`. You may combine this with `-c` or `-cs`.
+
+\note All these commands overwrite existing files without warning. You should
+particularly take care when running `fluid -u` since this overwrites the
+original `.fl` project file.
+
+ <!-- ---------------------------------------------------------------------- -->
+ \section commandline_windows Windows Specifics
+
+ FLTK uses Linux-style forward slashes to separate path segments in file names.
+ When running on Windows, FLUID will understand Microsoft drive names and
+ backward slashes as path separators and convert them internally into
+ forward slashes.
+
+ Under Windows, binaries can only be defined either as command line tools, or
+ as interactive apps. FLTK generates two almost identical binaries under
+ Windows. `fluid.exe` is meant to be used in interactive mode, and
+ `fluid-cmd.exe` is generated for the command line. Both tools do exactly the
+ same thing, except `fluid-cmd.exe` can use stdio to output error messages.
+
+*/

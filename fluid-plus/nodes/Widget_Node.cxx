@@ -1,0 +1,1776 @@
+//
+// Widget Node code for the Fast Light Tool Kit (FLTK).
+//
+// Copyright 1998-2026 by Bill Spitzak and others.
+//
+// This library is free software. Distribution and use rights are outlined in
+// the file "COPYING" which should have been included with this file.  If this
+// file is missing or damaged, see the license at:
+//
+//     https://www.fltk.org/COPYING.php
+//
+// Please see the following page on how to report bugs and issues:
+//
+//     https://www.fltk.org/bugs.php
+//
+
+#include "nodes/Widget_Node.h"
+#include "app/ui_locale.h"
+#include "app/designer_shell.h"
+
+#include "Fluid.h"
+#include "Project.h"
+#include "message.h"
+#include "proj/Image_Asset.h"
+#include "proj/mergeback.h"
+#include "proj/undo.h"
+#include "io/Project_Reader.h"
+#include "io/Project_Writer.h"
+#include "io/Code_Writer.h"
+#include "nodes/Menu_Node.h"
+#include "nodes/Function_Node.h"
+#include "nodes/Window_Node.h"
+#include "nodes/Grid_Node.h"
+#include "nodes/factory.h"
+#include "panels/widget_panel.h"
+
+#include <FL/Fl.H>
+#include <FL/Fl_Group.H>
+#include <FL/Fl_Table.H>
+#include <FL/Fl_Input.H>
+#include <FL/fl_message.H>
+#include <FL/Fl_Slider.H>
+#include <FL/Fl_Spinner.H>
+#include <FL/Fl_Window.H>
+#include <FL/Fl_Flex.H>
+#include "../../src/flstring.h"
+
+#undef min
+#undef max
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <algorithm>
+
+using namespace fluid;
+using namespace fluid::proj;
+
+extern void redraw_browser();
+extern void open_panel(); // in panels/widget_panel_callbacks.cxx
+
+// ---- Helper Functions
+
+// Make an Widget_Node subclass instance.
+// It figures out the automatic size and parent of the new widget,
+// creates the Fl_Widget (by calling the virtual function _make),
+// adds it to the Fl_Widget hierarchy, creates a new Node
+// instance, sets the widget pointers, and makes all the display
+// update correctly...
+std::string subclassname(Node* l) {
+  if (dynamic_cast<Menu_Bar_Node*>(l)) {
+    Menu_Bar_Node* mb = static_cast<Menu_Bar_Node*>(l);
+    if (mb->is_sys_menu_bar())
+      return mb->sys_menubar_name();
+  }
+  if (l->is_widget()) {
+    Widget_Node* p = (Widget_Node*)l;
+    std::string c = p->subclass();
+    if (!c.empty())
+      return c;
+    if (l->is_class())
+      return "Fl_Group";
+    if (p->o->type() == FL_DOUBLE_WINDOW)
+      return "Fl_Double_Window";
+    if (typeid(*p) == typeid(Input_Node)) {
+      if (p->o->type() == FL_FLOAT_INPUT)
+        return "Fl_Float_Input";
+      if (p->o->type() == FL_INT_INPUT)
+        return "Fl_Int_Input";
+    }
+  }
+  return l->type_name();
+}
+
+// the recursive part sorts all children by y, then x, returns pointer to next:
+Node* sort(Node* parent) {
+  Node* f;
+  Node* n = nullptr;
+  for (f = parent ? parent->next : Fluid.proj.tree.first; ; f = n) {
+    if (!f || (parent && f->level <= parent->level))
+      break;
+    n = sort(f);
+    if (!f->selected || !f->is_true_widget())
+      continue;
+    Fl_Widget* fw = ((Widget_Node*)f)->o;
+    Node* g; // we will insert before this
+    for (g = parent ? parent->next : Fluid.proj.tree.first; g != f; g = g->next) {
+      if (!g->selected || g->level > f->level)
+        continue;
+      Fl_Widget* gw = ((Widget_Node*)g)->o;
+      if (gw->y() > fw->y())
+        break;
+      if (gw->y() == fw->y() && gw->x() > fw->x())
+        break;
+    }
+    if (g != f)
+      f->move_before(g);
+  }
+  if (parent)
+    parent->layout_widget();
+  return f;
+}
+
+// turn number to string or string to number for saving to file:
+// does not work for hierarchical menus!
+// TODO: used with various pulldowns. explain more detailed
+const char* item_name(Fl_Menu_Item* m, int i) {
+  if (m) {
+    while (m->label()) {
+      if (m->argument() == i)
+        return fluid::menu_item_source(m);
+      m++;
+    }
+  }
+  static char buffer[20];
+  sprintf(buffer, "%d", i);
+  return buffer;
+}
+
+// TODO: used with various pulldowns. explain more detailed
+int item_number(Fl_Menu_Item* m, const char* i) {
+  if (!i)
+    return 0;
+  if (m && i) {
+    if (i[0]=='F' && i[1]=='L' && i[2]=='_')
+      i += 3;
+    while (m->label()) {
+      const char *source = fluid::menu_item_source(m);
+      if (source && !strcmp(source, i))
+        return int(m->argument());
+      m++;
+    }
+  }
+  return atoi(i);
+}
+
+/**
+ Check if the string is a valid function name.
+ \return true if no punctuation characters (except '_' and ':') are present
+    in the string, false otherwise.
+ */
+bool is_function_name(const std::string& name) {
+  if (name.empty()) return false;
+  for (char c : name) {
+    if ((fl_ascii_ispunct(c) || c == '\n') && c != '_' && c != ':') return false;
+  }
+  return true;
+}
+
+/**
+ Check if the string is the start of a lambda function.
+ \return true if the string starts with '[' (minimal test)
+    or starts with "std::bind(" (alternative lambda syntax).
+ \note FLTK 1.5 does not support std::bind() or lambdas with capture yet
+ */
+bool is_lambda(const std::string& name) {
+  if (name.empty()) return false;
+  return (name[0] == '[' || name.substr(0, 10) == "std::bind(");
+}
+
+/**
+ Test to see if name() is an array entry.
+ If so, and this is the highest number, return name[num+1].
+ Return and empty string if not the highest number or a field or function.
+ Return name() if not an array entry.
+ */
+std::string array_name(Widget_Node* o) {
+  if (o->name().empty())
+    return "";
+  const char* c = o->name().c_str();
+  const char* d;
+  for (d = c; *d != '['; d++) {
+    if (!*d) return c;
+    if (fl_ascii_ispunct(*d) && *d!='_') return "";
+  }
+  int num = atoi(d+1);
+  int sawthis = 0;
+  Node* t = o->prev;
+  Node* tp = o;
+  // find the enclosing class, or nullptr if not in a class
+  Node* cn = o->find_parent_class_node();
+  // set tp to the first member of the class, or the first node of the tree
+  for (; t && t->find_parent_class_node() == cn; tp = t, t = t->prev) {/*empty*/}
+  for (t = tp; t && t->find_parent_class_node() == cn; t = t->next) {
+    if (t == o) { sawthis=1; continue; }
+    if (t->name().empty())
+      continue;
+    const char* e = t->name().c_str();
+    if (strncmp(c, e, d-c)) continue;
+    int n1 = atoi(e+(d-c)+1);
+    if (n1 > num || (n1==num && sawthis)) return "";
+  }
+  static char buffer[128];
+  // MRS: we want strncpy() here...
+  strncpy(buffer, c, d-c+1);
+  snprintf(buffer+(d-c+1), sizeof(buffer) - (d-c+1), "%d]",num+1);
+  return buffer;
+}
+
+#define ZERO_ENTRY 1000
+
+Fl_Menu_Item boxmenu[] = {
+  {"NO_BOX",0,nullptr,(void *)ZERO_ENTRY},
+  {"boxes",0,nullptr,nullptr,FL_SUBMENU},
+  {"UP_BOX",0,nullptr,(void *)FL_UP_BOX},
+  {"DOWN_BOX",0,nullptr,(void *)FL_DOWN_BOX},
+  {"FLAT_BOX",0,nullptr,(void *)FL_FLAT_BOX},
+  {"BORDER_BOX",0,nullptr,(void *)FL_BORDER_BOX},
+  {"THIN_UP_BOX",0,nullptr,(void *)FL_THIN_UP_BOX},
+  {"THIN_DOWN_BOX",0,nullptr,(void *)FL_THIN_DOWN_BOX},
+  {"ENGRAVED_BOX",0,nullptr,(void *)FL_ENGRAVED_BOX},
+  {"EMBOSSED_BOX",0,nullptr,(void *)FL_EMBOSSED_BOX},
+  {"ROUND_UP_BOX",0,nullptr,(void *)FL_ROUND_UP_BOX},
+  {"ROUND_DOWN_BOX",0,nullptr,(void *)FL_ROUND_DOWN_BOX},
+  {"DIAMOND_UP_BOX",0,nullptr,(void *)FL_DIAMOND_UP_BOX},
+  {"DIAMOND_DOWN_BOX",0,nullptr,(void *)FL_DIAMOND_DOWN_BOX},
+  {"SHADOW_BOX",0,nullptr,(void *)FL_SHADOW_BOX},
+  {"ROUNDED_BOX",0,nullptr,(void *)FL_ROUNDED_BOX},
+  {"RSHADOW_BOX",0,nullptr,(void *)FL_RSHADOW_BOX},
+  {"RFLAT_BOX",0,nullptr,(void *)FL_RFLAT_BOX},
+  {"OVAL_BOX",0,nullptr,(void *)FL_OVAL_BOX},
+  {"OSHADOW_BOX",0,nullptr,(void *)FL_OSHADOW_BOX},
+  {"OFLAT_BOX",0,nullptr,(void *)FL_OFLAT_BOX},
+  {"PLASTIC_UP_BOX",0,nullptr,(void *)FL_PLASTIC_UP_BOX},
+  {"PLASTIC_DOWN_BOX",0,nullptr,(void *)FL_PLASTIC_DOWN_BOX},
+  {"PLASTIC_THIN_UP_BOX",0,nullptr,(void *)FL_PLASTIC_THIN_UP_BOX},
+  {"PLASTIC_THIN_DOWN_BOX",0,nullptr,(void *)FL_PLASTIC_THIN_DOWN_BOX},
+  {"PLASTIC_ROUND_UP_BOX",0,nullptr,(void *)FL_PLASTIC_ROUND_UP_BOX},
+  {"PLASTIC_ROUND_DOWN_BOX",0,nullptr,(void *)FL_PLASTIC_ROUND_DOWN_BOX},
+  {"GTK_UP_BOX",0,nullptr,(void *)FL_GTK_UP_BOX},
+  {"GTK_DOWN_BOX",0,nullptr,(void *)FL_GTK_DOWN_BOX},
+  {"GTK_THIN_UP_BOX",0,nullptr,(void *)FL_GTK_THIN_UP_BOX},
+  {"GTK_THIN_DOWN_BOX",0,nullptr,(void *)FL_GTK_THIN_DOWN_BOX},
+  {"GTK_ROUND_UP_BOX",0,nullptr,(void *)FL_GTK_ROUND_UP_BOX},
+  {"GTK_ROUND_DOWN_BOX",0,nullptr,(void *)FL_GTK_ROUND_DOWN_BOX},
+  {"GLEAM_UP_BOX",0,nullptr,(void *)FL_GLEAM_UP_BOX},
+  {"GLEAM_DOWN_BOX",0,nullptr,(void *)FL_GLEAM_DOWN_BOX},
+  {"GLEAM_THIN_UP_BOX",0,nullptr,(void *)FL_GLEAM_THIN_UP_BOX},
+  {"GLEAM_THIN_DOWN_BOX",0,nullptr,(void *)FL_GLEAM_THIN_DOWN_BOX},
+  {"GLEAM_ROUND_UP_BOX",0,nullptr,(void *)FL_GLEAM_ROUND_UP_BOX},
+  {"GLEAM_ROUND_DOWN_BOX",0,nullptr,(void *)FL_GLEAM_ROUND_DOWN_BOX},
+  {"OXY_UP_BOX",0,nullptr,(void *)FL_OXY_UP_BOX},
+  {"OXY_DOWN_BOX",0,nullptr,(void *)FL_OXY_DOWN_BOX},
+  {"OXY_THIN_UP_BOX",0,nullptr,(void *)FL_OXY_THIN_UP_BOX},
+  {"OXY_THIN_DOWN_BOX",0,nullptr,(void *)FL_OXY_THIN_DOWN_BOX},
+  {"OXY_ROUND_UP_BOX",0,nullptr,(void *)FL_OXY_ROUND_UP_BOX},
+  {"OXY_ROUND_DOWN_BOX",0,nullptr,(void *)FL_OXY_ROUND_DOWN_BOX},
+  {"OXY_BUTTON_UP_BOX",0,nullptr,(void *)FL_OXY_BUTTON_UP_BOX},
+  {"OXY_BUTTON_DOWN_BOX",0,nullptr,(void *)FL_OXY_BUTTON_DOWN_BOX},
+  {nullptr},
+  {"frames",0,nullptr,nullptr,FL_SUBMENU},
+  {"UP_FRAME",0,nullptr,(void *)FL_UP_FRAME},
+  {"DOWN_FRAME",0,nullptr,(void *)FL_DOWN_FRAME},
+  {"THIN_UP_FRAME",0,nullptr,(void *)FL_THIN_UP_FRAME},
+  {"THIN_DOWN_FRAME",0,nullptr,(void *)FL_THIN_DOWN_FRAME},
+  {"ENGRAVED_FRAME",0,nullptr,(void *)FL_ENGRAVED_FRAME},
+  {"EMBOSSED_FRAME",0,nullptr,(void *)FL_EMBOSSED_FRAME},
+  {"BORDER_FRAME",0,nullptr,(void *)FL_BORDER_FRAME},
+  {"SHADOW_FRAME",0,nullptr,(void *)FL_SHADOW_FRAME},
+  {"ROUNDED_FRAME",0,nullptr,(void *)FL_ROUNDED_FRAME},
+  {"OVAL_FRAME",0,nullptr,(void *)FL_OVAL_FRAME},
+  {"PLASTIC_UP_FRAME",0,nullptr,(void *)FL_PLASTIC_UP_FRAME},
+  {"PLASTIC_DOWN_FRAME",0,nullptr,(void *)FL_PLASTIC_DOWN_FRAME},
+  {"GTK_UP_FRAME",0,nullptr,(void *)FL_GTK_UP_FRAME},
+  {"GTK_DOWN_FRAME",0,nullptr,(void *)FL_GTK_DOWN_FRAME},
+  {"GTK_THIN_UP_FRAME",0,nullptr,(void *)FL_GTK_THIN_UP_FRAME},
+  {"GTK_THIN_DOWN_FRAME",0,nullptr,(void *)FL_GTK_THIN_DOWN_FRAME},
+  {"GLEAM_UP_FRAME",0,nullptr,(void *)FL_GLEAM_UP_FRAME},
+  {"GLEAM_DOWN_FRAME",0,nullptr,(void *)FL_GLEAM_DOWN_FRAME},
+  {"OXY_UP_FRAME",0,nullptr,(void *)FL_OXY_UP_FRAME},
+  {"OXY_DOWN_FRAME",0,nullptr,(void *)FL_OXY_DOWN_FRAME},
+  {"OXY_THIN_UP_FRAME",0,nullptr,(void *)FL_OXY_THIN_UP_FRAME},
+  {"OXY_THIN_DOWN_FRAME",0,nullptr,(void *)FL_OXY_THIN_DOWN_FRAME},
+  {nullptr},
+  {nullptr}};
+
+const char* boxname(int i) {
+  if (!i) i = ZERO_ENTRY;
+  for (int j = 0; j < int(sizeof(boxmenu)/sizeof(*boxmenu)); j++)
+    if (boxmenu[j].argument() == i)
+      return fluid::menu_item_source(&boxmenu[j]);
+  return nullptr;
+}
+
+int boxnumber(const char* i) {
+  if (i[0]=='F' && i[1]=='L' && i[2]=='_')
+    i += 3;
+  for (int j = 0; j < int(sizeof(boxmenu)/sizeof(*boxmenu)); j++) {
+    const char *source = fluid::menu_item_source(&boxmenu[j]);
+    if (source && !strcmp(source, i)) {
+      return int(boxmenu[j].argument());
+    }
+  }
+  return 0;
+}
+
+Fl_Menu_Item whenmenu[] = {
+  // set individual bits
+  {"FL_WHEN_CHANGED",0,nullptr,(void*)FL_WHEN_CHANGED, FL_MENU_TOGGLE},
+  {"FL_WHEN_NOT_CHANGED",0,nullptr,(void*)FL_WHEN_NOT_CHANGED, FL_MENU_TOGGLE},
+  {"FL_WHEN_RELEASE",0,nullptr,(void*)FL_WHEN_RELEASE, FL_MENU_TOGGLE},
+  {"FL_WHEN_ENTER_KEY",0,nullptr,(void*)FL_WHEN_ENTER_KEY, FL_MENU_TOGGLE},
+  {"FL_WHEN_CLOSED",0,nullptr,(void*)FL_WHEN_CLOSED, FL_MENU_TOGGLE|FL_MENU_DIVIDER},
+  // set bit combinations
+  {"FL_WHEN_NEVER",0,nullptr,(void*)FL_WHEN_NEVER},
+  {"FL_WHEN_RELEASE_ALWAYS",0,nullptr,(void*)FL_WHEN_RELEASE_ALWAYS},
+  {"FL_WHEN_ENTER_KEY_ALWAYS",0,nullptr,(void*)FL_WHEN_ENTER_KEY_ALWAYS},
+  {"FL_WHEN_ENTER_KEY_CHANGED",0,nullptr,(void*)FL_WHEN_ENTER_KEY_CHANGED},
+  {nullptr}};
+
+
+static Fl_Menu_Item whensymbolmenu[] = {
+  /*  0 */ {"FL_WHEN_NEVER",0,nullptr,(void*)FL_WHEN_NEVER},
+  /*  1 */ {"FL_WHEN_CHANGED",0,nullptr,(void*)FL_WHEN_CHANGED},
+  /*  2 */ {"FL_WHEN_NOT_CHANGED",0,nullptr,(void*)FL_WHEN_NOT_CHANGED},
+  /*  3 */ {"FL_WHEN_CHANGED | FL_WHEN_NOT_CHANGED",0,nullptr,(void*)(FL_WHEN_CHANGED|FL_WHEN_NOT_CHANGED)},
+  /*  4 */ {"FL_WHEN_RELEASE",0,nullptr,(void*)FL_WHEN_RELEASE},
+  /*  5 */ {"FL_WHEN_CHANGED | FL_WHEN_RELEASE",0,nullptr,(void*)(FL_WHEN_CHANGED|FL_WHEN_RELEASE)},
+  /*  6 */ {"FL_WHEN_RELEASE_ALWAYS",0,nullptr,(void*)FL_WHEN_RELEASE_ALWAYS},
+  /*  7 */ {"FL_WHEN_CHANGED | FL_WHEN_RELEASE_ALWAYS",0,nullptr,(void*)(FL_WHEN_CHANGED|FL_WHEN_RELEASE_ALWAYS)},
+  /*  8 */ {"FL_WHEN_ENTER_KEY",0,nullptr,(void*)FL_WHEN_ENTER_KEY},
+  /*  9 */ {"FL_WHEN_CHANGED | FL_WHEN_ENTER_KEY",0,nullptr,(void*)(FL_WHEN_CHANGED|FL_WHEN_ENTER_KEY)},
+  /* 10 */ {"FL_WHEN_ENTER_KEY_ALWAYS",0,nullptr,(void*)FL_WHEN_ENTER_KEY_ALWAYS},
+  /* 11 */ {"FL_WHEN_ENTER_KEY_CHANGED",0,nullptr,(void*)FL_WHEN_ENTER_KEY_CHANGED},
+  /* 12 */ {"FL_WHEN_RELEASE | FL_WHEN_ENTER_KEY",0,nullptr,(void*)(FL_WHEN_RELEASE|FL_WHEN_ENTER_KEY)},
+  /* 13 */ {"FL_WHEN_RELEASE | FL_WHEN_CHANGED | FL_WHEN_ENTER_KEY",0,nullptr,(void*)(FL_WHEN_RELEASE|FL_WHEN_CHANGED|FL_WHEN_ENTER_KEY)},
+  /* 14 */ {"FL_WHEN_RELEASE | FL_WHEN_ENTER_KEY_ALWAYS",0,nullptr,(void*)(FL_WHEN_RELEASE|FL_WHEN_ENTER_KEY_ALWAYS)},
+  /* 15 */ {"FL_WHEN_RELEASE | FL_WHEN_ENTER_KEY_CHANGED",0,nullptr,(void*)(FL_WHEN_RELEASE|FL_WHEN_ENTER_KEY_CHANGED)},
+  {nullptr}
+};
+
+// Return a text string representing  the Fl_When value n
+const char* when_symbol_name(int n) {
+  static char sym[128];
+  if (n == FL_WHEN_CLOSED) {
+    strcpy(sym, "FL_WHEN_CLOSED");
+  } else {
+    strcpy(sym, fluid::menu_item_source(&whensymbolmenu[n&15]));
+    if (n & FL_WHEN_CLOSED)
+      strcat(sym, " | FL_WHEN_CLOSED");
+  }
+  return sym;
+}
+
+Fl_Menu_Item labeltypemenu[] = {
+  {"NORMAL_LABEL",0,nullptr,(void*)nullptr},
+  {"SHADOW_LABEL",0,nullptr,(void*)FL_SHADOW_LABEL},
+  {"ENGRAVED_LABEL",0,nullptr,(void*)FL_ENGRAVED_LABEL},
+  {"EMBOSSED_LABEL",0,nullptr,(void*)FL_EMBOSSED_LABEL},
+  {"NO_LABEL",0,nullptr,(void*)(FL_NO_LABEL)},
+  {nullptr}};
+
+// Not static: also used by align_cb/align_position_cb/align_text_image_cb
+// in panels/widget_panel_callbacks.cxx.
+Fl_Menu_Item alignmenu[] = {
+  {"FL_ALIGN_CENTER",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_CENTER)},
+  {"FL_ALIGN_TOP",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_TOP)},
+  {"FL_ALIGN_BOTTOM",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_BOTTOM)},
+  {"FL_ALIGN_LEFT",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_LEFT)},
+  {"FL_ALIGN_RIGHT",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_RIGHT)},
+  {"FL_ALIGN_INSIDE",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_INSIDE)},
+  {"FL_ALIGN_CLIP",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_CLIP)},
+  {"FL_ALIGN_WRAP",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_WRAP)},
+  {"FL_ALIGN_TEXT_OVER_IMAGE",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_TEXT_OVER_IMAGE)},
+  {"FL_ALIGN_TOP_LEFT",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_TOP_LEFT)},
+  {"FL_ALIGN_TOP_RIGHT",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_TOP_RIGHT)},
+  {"FL_ALIGN_BOTTOM_LEFT",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_BOTTOM_LEFT)},
+  {"FL_ALIGN_BOTTOM_RIGHT",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_BOTTOM_RIGHT)},
+  {"FL_ALIGN_LEFT_TOP",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_LEFT_TOP)},
+  {"FL_ALIGN_RIGHT_TOP",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_RIGHT_TOP)},
+  {"FL_ALIGN_LEFT_BOTTOM",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_LEFT_BOTTOM)},
+  {"FL_ALIGN_RIGHT_BOTTOM",0,nullptr,(void*)(fl_intptr_t)(FL_ALIGN_RIGHT_BOTTOM)},
+  {nullptr}
+};
+
+
+// ---- Class Methods
+
+/**
+ Find a good size for this widget at creation time.
+ \param[out] w, h Suggested size for the widget.
+ */
+void Widget_Node::ideal_size(int &w, int &h) {
+  w = 120;
+  h = 100;
+  fluid::app::Snap_Action::better_size(w, h);
+}
+
+/**
+ Offer to the user to create a missing Window or Group container for this Widget.
+
+ A Widget can only be created inside a Window or Group node. If none is
+ found, this opens a dialog offering to create a Window (creating any
+ missing Function or Class method needed to hold it, based on the tree
+ position of \p anchor), or to cancel so the user can pick an existing
+ container instead.
+
+ \param[in,out] strategy placement strategy, updated to place the widget
+    inside the newly created container
+ \param[in,out] anchor node to insert relative to; updated to the new
+    container if one was created
+ \return true if a container was created and \p anchor and \p strategy
+    were updated, false if the user canceled
+ */
+bool Widget_Node::node_creation_assistant(Strategy& strategy, Node*& anchor)
+{
+  enum Job { CREATE_WIDGET, CREATE_WINDOW, CREATE_FUNCTION, CREATE_METHOD } job = CREATE_FUNCTION;
+  Node* old_anchor = anchor;
+  int ret = fluid::big_choice(
+    "Fluid: Widgets require a Container",
+    "A Widget can only be created inside a Window or Group Node.\n\n"
+    "Would you like to create a new container, or cancel and select an existing one?\n\n",
+    {
+      {"Create a &Window and add the Widget", 'w'},
+      {"&Cancel and select an existing container", 'c'}
+    } );
+  switch (ret) {
+    case 0:
+      // Walk up the tree to find a compatible container for the widget.
+      while (anchor) {
+        if (dynamic_cast<Class_Node*>(anchor)) {
+          job = CREATE_METHOD;
+          break;
+        }
+        if (dynamic_cast<Function_Node*>(anchor)) {
+          job = CREATE_WINDOW;
+          break;
+        }
+        old_anchor = anchor;
+        anchor = anchor->parent;
+      }
+      Fluid.proj.tree.current = old_anchor;
+      if (job == CREATE_METHOD) {
+        Fluid.proj.tree.current = add_new_widget_from_user("function", Strategy::AS_LAST_CHILD, false);
+        job = CREATE_WINDOW;
+      }
+      if (job == CREATE_FUNCTION) {
+        Fluid.proj.tree.current = add_new_widget_from_user("function", Strategy::AFTER_CURRENT, false);
+        job = CREATE_WINDOW;
+      }
+      if (!Fluid.proj.tree.current) return false;
+      if (job == CREATE_WINDOW) {
+        Fluid.proj.tree.current = add_new_widget_from_user("Fl_Window", Strategy::AS_FIRST_CHILD, true);
+        job = CREATE_WIDGET;
+      }
+      anchor = Fluid.proj.tree.current;
+      if (!anchor) return false;
+      strategy.placement(Strategy::AS_LAST_CHILD);
+      break;
+    default:
+      return false;
+  }
+  return true;
+}
+
+/**
+ Make a new Widget node and add it to the tree.
+ \param[in] strategy is Strategy::AS_LAST_CHILD or Strategy::AFTER_CURRENT
+ \return new node
+ */
+Node* Widget_Node::make(Strategy strategy) {
+  Node* anchor = Fluid.proj.tree.current, *pp = anchor;
+  if (pp && (strategy.placement() == Strategy::AFTER_CURRENT))
+    pp = pp->parent;
+  while (pp && !dynamic_cast<Group_Node*>(pp)) {
+    anchor = pp;
+    strategy.placement(Strategy::AFTER_CURRENT);
+    pp = pp->parent;
+  }
+  if (!pp || !pp->is_true_widget() || !anchor->is_true_widget()) {
+    if (strategy.source() == Strategy::FROM_FILE) {
+      fluid_message("Please select a group widget or window");
+      return nullptr;
+    } else if (node_creation_assistant(strategy, anchor) == false) {
+      return nullptr; // user canceled the creation assitant
+    }
+    pp = anchor;
+  }
+
+  Widget_Node* p = (Widget_Node*)pp;
+  Widget_Node* q = (Widget_Node*)anchor;
+
+  // Figure out a border between widget and window:
+  int B = p->o->w()/2;
+  if (p->o->h()/2 < B)
+    B = p->o->h()/2;
+  if (B>25)
+    B = 25;
+
+  int ULX,ULY; // parent's origin in window
+  if (!dynamic_cast<Window_Node*>(p)) { // if it is a group, add corner
+    ULX = p->o->x(); ULY = p->o->y();
+  } else {
+    ULX = ULY = 0;
+  }
+
+  // Figure out a position and size for the widget
+  int X,Y,W,H;
+  if (dynamic_cast<Group_Node*>(this)) {     // fill the parent with the widget
+    X = ULX+B;
+    W = p->o->w()-B;
+    Y = ULY+B;
+    H = p->o->h()-B;
+  } else if (q != p) {  // copy position and size of current widget
+    W = q->o->w();
+    H = q->o->h();
+    X = q->o->x()+W;
+    Y = q->o->y();
+    if (X+W > ULX+p->o->w()) {
+      X = q->o->x();
+      Y = q->o->y()+H;
+      if (Y+H > ULY+p->o->h()) Y = ULY+B;
+    }
+  } else {      // just make it small and square...
+    X = ULX+B;
+    Y = ULY+B;
+    W = H = B;
+  }
+
+  // Construct the Node.
+  // Sample widgets and newly created widgets must not join the "current group".
+  // After the property page uses begin/end, the current group stays on the property scroller
+  // and a sample button would be drawn inside the property panel.
+  Fl_Group *saved_group = Fl_Group::current();
+  Fl_Group::current(nullptr);
+  Widget_Node* t = _make();
+  if (!o) {
+    o = widget(0,0,100,100); // create template widget
+    if (o->parent()) o->parent()->remove(*o);
+  }
+  Fl_Group::current(nullptr);
+  t->factory = this;
+
+  // Construct the Fl_Widget:
+  t->o = widget(X,Y,W,H);
+  if (t->o->parent()) t->o->parent()->remove(*t->o);
+  Fl_Group::current(saved_group);
+  if (strategy.source() == Strategy::FROM_FILE)
+    t->o->label(nullptr);
+  else if (t->o->label())
+    t->label(t->o->label()); // allow editing
+  t->o->user_data((void*)t);
+
+  // Put it in the parent:
+  //  ((Fl_Group *)(p->o))->add(t->o); (done by Node::add())
+  // add to browser:
+  t->add(anchor, strategy);
+  t->redraw();
+  return t;
+}
+
+/**
+ Call the required function to set the label of the widget.
+ \param[in] n New label text.
+ */
+void Widget_Node::setlabel(const std::string& n) {
+  o->copy_label(n.c_str());
+  redraw();
+}
+
+/**
+ Destructor for the Widget_Node class.
+ Also deletes the widget and redraws the window container.
+ */
+Widget_Node::~Widget_Node() {
+  if (o) {
+    Fl_Window* win = o->window();
+    delete o;
+    if (win)
+      win->redraw();
+  }
+}
+
+/**
+ Store extra user code.
+ The code is cropped of leading and trailing whitespace, and stored in the
+ extra_code_ array. If the text changed, the project is marked dirty.
+ \param[in] m Index of the extra code block to store.
+ \param[in] n New code text.
+ */
+void Widget_Node::extra_code(int m, const std::string& n) {
+  storestring(n, extra_code_[m]);
+}
+
+/**
+ Append more lines of text to an extra code block.
+ A newline and the new code is appended. The result is cropped of leading and
+ trailing whitespace, and stored in the extra_code_ array. If the text changed,
+ the project is marked dirty.
+ \param[in] m Index of the extra code block to store.
+ \param[in] n New code text to append.
+ */
+void Widget_Node::extra_code_append(int m, const std::string& n) {
+  std::string code;
+  if (extra_code_[m].empty()) {
+    code = n;
+  } else {
+    code = extra_code_[m] + "\n" + n;
+  }
+  storestring(code, extra_code_[m]);
+}
+
+/**
+ Store the C++ subclass name for this widget.
+ The name is cropped of leading and trailing whitespace, and stored in the
+ subclass_ string. If the text changed, the project is marked dirty.
+ The node browser is updated if needed.
+ \param[in] n New subclass name.
+ */
+void Widget_Node::subclass(const std::string& n) {
+  if (storestring(n, subclass_) && visible)
+    redraw_browser();
+}
+
+/**
+ Store the tooltip text for this widget.
+ The text can contain newline characters. It is cropped of leading and trailing
+ whitespace. If the text changed, the project is marked dirty.
+ The widget and node browser are updated if needed.
+ \param[in] text New tooltip text.
+ */
+void Widget_Node::tooltip(const std::string& text) {
+  storestring(text, tooltip_);
+  if (text.empty()) {
+    o->tooltip(nullptr);
+  } else {
+    o->copy_tooltip(text.c_str());
+  }
+}
+
+/**
+ Either mark the widget's parent for redraw, or if this is a menu item, mark the
+ menubar to rebuild.
+ */
+void Widget_Node::redraw() {
+  Node* t = this;
+  if (dynamic_cast<Menu_Item_Node*>(this)) {
+    // find the menu button that parents this menu:
+    do {
+      t = t->parent;
+    } while (t && dynamic_cast<Menu_Item_Node*>(t));
+    // kludge to cause build_menu to be called again:
+    if (t)
+      t->add_child(nullptr, nullptr);
+  } else {
+    while (t->parent && t->parent->is_widget())
+      t = t->parent;
+    ((Widget_Node*)t)->o->redraw();
+  }
+}
+
+/**
+ Return true if this widget is the resizable one in its group.
+ If this is a window, it checks if the window has a resizable widget.
+ Otherwise, it checks if the parent group has this widget as its
+ resizable widget.
+ \return 1 if resizable, 0 otherwise.
+ */
+uchar Widget_Node::resizable() const {
+  if (dynamic_cast<const Window_Node*>(this))
+    return ((Fl_Window*)o)->resizable() != nullptr;
+  Fl_Group* p = (Fl_Group*)o->parent();
+  if (p)
+    return p->resizable() == o;
+  else
+    return 0;
+}
+
+/**
+ Update the resizable status of the underlying Fl widget.
+ \param[in] v If true, make this widget resizable. If false, make it not resizable.
+ */
+void Widget_Node::resizable(uchar v) {
+  if (v) {
+    if (resizable())
+      return;
+    if (dynamic_cast<Window_Node*>(this)) {
+      ((Fl_Window*)o)->resizable(o);
+    } else {
+      Fl_Group* p = (Fl_Group*)o->parent();
+      if (p) p->resizable(o);
+    }
+  } else {
+    if (!resizable())
+      return;
+    if (dynamic_cast<Window_Node*>(this)) {
+      ((Fl_Window*)o)->resizable(nullptr);
+    } else {
+      Fl_Group* p = (Fl_Group*)o->parent();
+      if (p) p->resizable(nullptr);
+    }
+  }
+}
+
+/**
+ Read or write textfont(), textsize(), and textcolor() attributes for this widget.
+ This is a virtual function and implemented for those widget types that support
+ text attributes.
+ \param[in] op Operation to perform (0=get all, 1=set font, 2=set size, 3=set color, 4=get all defaults)
+ \param[inout] font, size, color References to the font, size, and color values to read or write.
+ \return 1 if the widget supports text attributes, 0 otherwise.
+ */
+int Widget_Node::textstuff(int op, Fl_Font& font, int& size, Fl_Color& color) {
+  ((void)op);
+  ((void)font);
+  ((void)size);
+  ((void)color);
+  return 0;
+}
+
+/**
+ Open and refresh the widget panel for this widget.
+ */
+void Widget_Node::open() {
+  open_panel();
+}
+
+/**
+ Write the static initializer code for the widget.
+ This write the #include statements, any extra code, and the callback function
+ declaration if needed. It initializes active and inactive images. It writes
+ menu arrays is needed.
+ \param[in] f Code_Writer object to write the code to.
+ */
+void Widget_Node::write_static(fluid::io::Code_Writer& f) {
+  std::string t = subclassname(this);
+  if (subclass().empty() || (is_class() && (t.compare(0, 3, "Fl_")==0))) {
+    f.write_h_once("#include <FL/Fl.H>");
+    f.write_h_once("#include <FL/" + t + ".H>");
+  }
+  if (!extra_code(0).empty()) {
+    f.write_block_h_once(extra_code(0));
+  }
+  if (!extra_code(1).empty()) {
+    f.write_h(extra_code(1));
+    f.write_h("\n");
+  }
+  if (is_function_name(callback())) {
+    std::string callback_name_pattern = callback() + "(*)";
+    Node* pClass = find_parent_class_node();
+    if (pClass && pClass->has_function("static void", callback_name_pattern)) {
+      // nothing to do, method already exists
+    } else if (has_toplevel_function("*void", callback_name_pattern)) {
+      // nothing to do, function already exists
+    } else {
+      f.write_h_once("extern void " + callback() + "(" + t + "*, " + user_data_type_or_voidp() + ");");
+    }
+  }
+  std::string k = full_class_name();
+  std::string c = array_name(this);
+  if (!c.empty() && k.empty() && !is_class()) {
+    f.write_c("\n");
+    if (!public_) f.write_c("static ");
+    else f.write_h("extern " + t + "* " + c + ";\n");
+    if (c.find('[') == std::string::npos)
+      f.write_c(t + "* " + c + " = (" + t + "*)nullptr;\n");
+    else
+      f.write_c(t + "* " + c + " = {(" + t + "*)nullptr};\n");
+  }
+  if (!callback().empty() && !is_function_name(callback()) && !is_lambda(callback())) {
+    // see if 'o' or 'v' used, to prevent unused argument warnings:
+    int use_o = 0;
+    int use_v = 0;
+    const char* d;
+    for (d = callback().c_str(); *d;) {
+      if (*d == 'o' && !is_id(d[1])) use_o = 1;
+      if (*d == 'v' && !is_id(d[1])) use_v = 1;
+      do d++; while (is_id(*d));
+      while (*d && !is_id(*d)) d++;
+    }
+    std::string cn = callback_name(f);
+    if (!k.empty()) {
+      f.write_c("\nvoid " + k + "::" + cn + "_i(" + t + "*");
+    } else {
+      f.write_c("\nstatic void " + cn + "(" + t + "*");
+    }
+    if (use_o) f.write_c(" o");
+    std::string ut = user_data_type_or_voidp();
+    f.write_c(", " + ut);
+    if (use_v) f.write_c(" v");
+    f.write_c(") {\n");
+    f.tag(Mergeback::Tag::GENERIC, Mergeback::Tag::WIDGET_CALLBACK, 0);
+    f.write_c_indented(callback(), 1, 0);
+    if (*(d-1) != ';' && *(d-1) != '}') {
+      const std::string& cb = callback();
+      size_t nl = cb.find_last_of('\n');
+      std::string last_line = (nl == std::string::npos) ? cb : cb.substr(nl + 1);
+      // Only add trailing semicolon if the last line is not a preprocessor
+      // statement...
+      if (!last_line.empty() && last_line.front() != '#') f.write_c(";");
+    }
+    f.write_c("\n");
+    f.tag(Mergeback::Tag::WIDGET_CALLBACK, Mergeback::Tag::GENERIC, get_uid());
+    f.write_c("}\n");
+    if (!k.empty()) {
+      f.write_c("void " + k + "::" + cn + "(" + t + "* o, " + ut + " v) {\n");
+      f.write_c(f.indent(1) + "((" + k + "*)(o");
+      Node* q = nullptr;
+      for (Node* p = parent; p && p->is_widget(); q = p, p = p->parent)
+        f.write_c("->parent()");
+      if (!q || !dynamic_cast<Widget_Class_Node*>(q))
+        f.write_c("->user_data()");
+      f.write_c("))->" + cn + "_i(o,v);\n}\n");
+    }
+  }
+  active_image.write_static(f);
+  inactive_image.write_static(f);
+}
+
+/**
+ Write the code that creates the widget before the children are created.
+ \param[in] f Code_Writer object to write the code to.
+ */
+void Widget_Node::write_code1(fluid::io::Code_Writer& f) {
+  std::string t = subclassname(this);
+  std::string c = array_name(this);
+  if (!c.empty()) {
+    if (is_in_class()) {
+      f.write_public(public_);
+      f.write_h(f.indent(1) + t + "* " + c + ";\n");
+    }
+  }
+  if (is_in_class() && !callback().empty() && !is_function_name(callback()) && !is_lambda(callback())) {
+    std::string cn = callback_name(f);
+    std::string ut = user_data_type_or_voidp();
+    f.write_public(0);
+    f.write_h(f.indent(1) + "inline void " + cn + "_i(" + t + "*, " + ut + ");\n");
+    f.write_h(f.indent(1) + "static void " + cn + "(" + t + "*, " + ut + ");\n");
+  }
+  // figure out if local variable will be used (prevent compiler warnings):
+  int wused = name().empty() && dynamic_cast<Window_Node*>(this);
+
+  f.write_c(f.indent() + "{ ");
+  write_comment_inline_c(f);
+  f.write_c("auto* o = ");
+  if (!name().empty()) f.write_c(name() + " = ");
+  if (dynamic_cast<Window_Node*>(this)) {
+    // Handle special case where user is faking a Fl_Group type as a window,
+    // there is no 2-argument constructor in that case:
+    if (t.find("Window")==t.npos)
+      f.write_c("new " + t + "(0, 0, " + std::to_string(o->w()) + ", " + std::to_string(o->h()));
+    else
+      f.write_c("new " + t + "(" + std::to_string(o->w()) + ", " + std::to_string(o->h()));
+  } else if (dynamic_cast<Menu_Bar_Node*>(this)
+             && ((Menu_Bar_Node*)this)->is_sys_menu_bar()
+             && is_in_class()) {
+    f.write_c("(" + t + "*)new " + ((Menu_Bar_Node*)this)->sys_menubar_proxy_name()
+              + "(" + std::to_string(o->x()) + ", " + std::to_string(o->y())
+              + ", " + std::to_string(o->w()) + ", " + std::to_string(o->h()) );
+  } else {
+    f.write_c("new " + t
+              + "(" + std::to_string(o->x()) + ", " + std::to_string(o->y())
+              + ", " + std::to_string(o->w()) + ", " + std::to_string(o->h()) );
+  }
+  if (!label().empty()) {
+    f.write_c(", ");
+    switch (Fluid.proj.i18n.type) {
+    case fluid::I18n_Type::NONE : /* None */
+        f.write_cstring(label().c_str());
+        break;
+    case fluid::I18n_Type::GNU : /* GNU gettext */
+        f.write_c(Fluid.proj.i18n.gnu_function + "(");
+        f.write_cstring(label().c_str());
+        f.write_c(")");
+        break;
+    case fluid::I18n_Type::POSIX : /* POSIX catgets */
+        f.write_c("catgets("
+                  + (Fluid.proj.i18n.posix_file.empty() ? std::string("_catalog") : Fluid.proj.i18n.posix_file)
+                  + ", " + Fluid.proj.i18n.posix_set + ", " + std::to_string(msgnum()) + ",");
+        f.write_cstring(label().c_str());
+        f.write_c(")");
+        break;
+    }
+  }
+  f.write_c(");\n");
+
+  f.indent_more();
+
+  // Avoid compiler warning for unused variable.
+  // Also avoid quality control warnings about incorrect allocation error handling.
+  if (wused)
+    f.write_c(f.indent() + "w = o; (void)w;\n"); // w is the return value of the function
+  else
+    f.write_c(f.indent() + "(void)o;\n"); // avoid warning if o is not used
+
+
+  write_widget_code(f);
+
+  if (!extra_code(2).empty()) {
+    f.tag(Mergeback::Tag::GENERIC, Mergeback::Tag::SETUP, 0);
+    f.write_c_indented(extra_code(2), 0, '\n');
+    f.tag(Mergeback::Tag::SETUP, Mergeback::Tag::GENERIC, get_uid());
+  }
+}
+
+/**
+ Helper to write code for a color property using symbolic names.
+ \param[in] f Code_Writer object to write the code to.
+ \param[in] field Name of the color property to write.
+ \param[in] color Color value to write.
+ */
+void Widget_Node::write_color(fluid::io::Code_Writer& f, const char* field, Fl_Color color) {
+  const char* color_name = nullptr;
+  switch (color) {
+  case FL_FOREGROUND_COLOR:     color_name = "FL_FOREGROUND_COLOR";     break;
+  case FL_BACKGROUND2_COLOR:    color_name = "FL_BACKGROUND2_COLOR";    break;
+  case FL_INACTIVE_COLOR:       color_name = "FL_INACTIVE_COLOR";       break;
+  case FL_SELECTION_COLOR:      color_name = "FL_SELECTION_COLOR";      break;
+  case FL_GRAY0:                color_name = "FL_GRAY0";                break;
+  case FL_DARK3:                color_name = "FL_DARK3";                break;
+  case FL_DARK2:                color_name = "FL_DARK2";                break;
+  case FL_DARK1:                color_name = "FL_DARK1";                break;
+  case FL_BACKGROUND_COLOR:     color_name = "FL_BACKGROUND_COLOR";     break;
+  case FL_LIGHT1:               color_name = "FL_LIGHT1";               break;
+  case FL_LIGHT2:               color_name = "FL_LIGHT2";               break;
+  case FL_LIGHT3:               color_name = "FL_LIGHT3";               break;
+  case FL_BLACK:                color_name = "FL_BLACK";                break;
+  case FL_RED:                  color_name = "FL_RED";                  break;
+  case FL_GREEN:                color_name = "FL_GREEN";                break;
+  case FL_YELLOW:               color_name = "FL_YELLOW";               break;
+  case FL_BLUE:                 color_name = "FL_BLUE";                 break;
+  case FL_MAGENTA:              color_name = "FL_MAGENTA";              break;
+  case FL_CYAN:                 color_name = "FL_CYAN";                 break;
+  case FL_DARK_RED:             color_name = "FL_DARK_RED";             break;
+  case FL_DARK_GREEN:           color_name = "FL_DARK_GREEN";           break;
+  case FL_DARK_YELLOW:          color_name = "FL_DARK_YELLOW";          break;
+  case FL_DARK_BLUE:            color_name = "FL_DARK_BLUE";            break;
+  case FL_DARK_MAGENTA:         color_name = "FL_DARK_MAGENTA";         break;
+  case FL_DARK_CYAN:            color_name = "FL_DARK_CYAN";            break;
+  case FL_WHITE:                color_name = "FL_WHITE";                break;
+  }
+  const char* var = is_class() ? "this" : name().empty() ? "o" : name().c_str();
+  if (color_name) {
+    f.write_c(f.indent() + var + "->" + field + "(" + color_name + ");\n");
+  } else {
+    f.write_c(f.indent() + var + "->" + field + "((Fl_Color)" + std::to_string(color) + ");\n");
+  }
+}
+
+/**
+ Write the code to set properties, called from write_code1.
+ \param[in] f Code_Writer object to write the code to.
+ */
+void Widget_Node::write_widget_code(fluid::io::Code_Writer& f) {
+  Fl_Widget* tplate = ((Widget_Node*)factory)->o;
+  const char* var = is_class() ? "this" : !name().empty() ? name().c_str() : "o";
+
+  if (!tooltip().empty()) {
+    f.write_c(f.indent() + var + "->tooltip(");
+    switch (Fluid.proj.i18n.type) {
+    case fluid::I18n_Type::NONE : /* None */
+        f.write_cstring(tooltip());
+        break;
+    case fluid::I18n_Type::GNU : /* GNU gettext */
+        f.write_c(Fluid.proj.i18n.gnu_function + "(");
+        f.write_cstring(tooltip());
+        f.write_c(")");
+        break;
+    case fluid::I18n_Type::POSIX : /* POSIX catgets */
+        f.write_c("catgets("
+                  + (Fluid.proj.i18n.posix_file.empty() ? std::string("_catalog") : Fluid.proj.i18n.posix_file)
+                  + ", " + Fluid.proj.i18n.posix_set
+                  + ", " + std::to_string(msgnum() + 1) + ", ");
+        f.write_cstring(tooltip());
+        f.write_c(")");
+        break;
+    }
+    f.write_c(");\n");
+  }
+
+  if (dynamic_cast<Spinner_Node*>(this) && ((Fl_Spinner*)o)->type() != ((Fl_Spinner*)tplate)->type())
+    f.write_c(f.indent() + var + "->type(" + std::to_string(((Fl_Spinner*)o)->type()) + ");\n");
+  else if (o->type() != tplate->type() && !dynamic_cast<Window_Node*>(this))
+    f.write_c(f.indent() + var + "->type(" + std::to_string(o->type()) + ");\n");
+  if (o->box() != tplate->box() || !subclass().empty())
+    f.write_c(f.indent() + var + "->box(FL_" + boxname(o->box()) + ");\n");
+
+  // write shortcut command if needed
+  int shortcut = 0;
+  if (is_button()) shortcut = ((Fl_Button*)o)->shortcut();
+  else if (dynamic_cast<Input_Node*>(this)) shortcut = ((Fl_Input_*)o)->shortcut();
+  else if (dynamic_cast<Value_Input_Node*>(this)) shortcut = ((Fl_Value_Input*)o)->shortcut();
+  else if (dynamic_cast<Text_Display_Node*>(this)) shortcut = ((Fl_Text_Display*)o)->shortcut();
+  if (shortcut) {
+    int s = shortcut;
+    f.write_c(f.indent() + var + "->shortcut(");
+    if (Fluid.proj.use_FL_COMMAND) {
+      if (s & FL_CTRL) { f.write_c("FL_CONTROL|"); s &= ~FL_CTRL; }
+      if (s & FL_META) { f.write_c("FL_COMMAND|"); s &= ~FL_META; }
+    } else {
+      if (s & FL_CTRL) { f.write_c("FL_CTRL|"); s &= ~FL_CTRL; }
+      if (s & FL_META) { f.write_c("FL_META|"); s &= ~FL_META; }
+    }
+    if (s & FL_SHIFT) { f.write_c("FL_SHIFT|"); s &= ~FL_SHIFT; }
+    if (s & FL_ALT) { f.write_c("FL_ALT|"); s &= ~FL_ALT; }
+    if ((s < 127) && fl_ascii_isprint(s))
+      f.write_c("'" + std::string(1, s) + "');\n");
+    else {
+      f.write_c("0x" + fluid::io::to_string_8x(s) + ");\n");
+    }
+  }
+
+  if (dynamic_cast<Button_Node*>(this)) {
+    Fl_Button* b = (Fl_Button*)o;
+    if (b->down_box())
+      f.write_c(f.indent() + var + "->down_box(FL_" + boxname(b->down_box()) + ");\n");
+    if (b->value())
+      f.write_c(f.indent() + var + "->value(1);\n");
+    if (b->compact())
+      f.write_c(f.indent() + var + "->compact(" + std::to_string(b->compact()) + ");\n");
+  } else if (dynamic_cast<Input_Choice_Node*>(this)) {
+    Fl_Input_Choice* b = (Fl_Input_Choice*)o;
+    if (b->down_box())
+      f.write_c(f.indent() + var + "->down_box(FL_" + boxname(b->down_box()) + ");\n");
+  } else if (dynamic_cast<Menu_Manager_Node*>(this)) {
+    Fl_Menu_* b = (Fl_Menu_*)o;
+    if (b->down_box())
+      f.write_c(f.indent() + var + "->down_box(FL_" + boxname(b->down_box()) + ");\n");
+  }
+  if (o->color() != tplate->color() || !subclass().empty())
+    write_color(f, "color", o->color());
+  if (o->selection_color() != tplate->selection_color() || !subclass().empty())
+    write_color(f, "selection_color", o->selection_color());
+  active_image.write_code(f, var, false);
+  inactive_image.write_code(f, var, true);
+  if (o->labeltype() != tplate->labeltype() || !subclass().empty())
+    f.write_c(f.indent() + var + "->labeltype(FL_" + item_name(labeltypemenu, o->labeltype()) + ");\n");
+  if (o->labelfont() != tplate->labelfont() || !subclass().empty())
+    f.write_c(f.indent() + var + "->labelfont(" + std::to_string(o->labelfont()) + ");\n");
+  if (o->labelsize() != tplate->labelsize() || !subclass().empty())
+    f.write_c(f.indent() + var + "->labelsize(" + std::to_string(o->labelsize()) + ");\n");
+  if (o->labelcolor() != tplate->labelcolor() || !subclass().empty())
+    write_color(f, "labelcolor", o->labelcolor());
+  if (o->horizontal_label_margin() != tplate->horizontal_label_margin())
+    f.write_c(f.indent() + var + "->horizontal_label_margin(" + std::to_string(o->horizontal_label_margin()) + ");\n");
+  if (o->vertical_label_margin() != tplate->vertical_label_margin())
+    f.write_c(f.indent() + var + "->vertical_label_margin(" + std::to_string(o->vertical_label_margin()) + ");\n");
+  if (o->label_image_spacing() != tplate->label_image_spacing())
+    f.write_c(f.indent() + var + "->label_image_spacing(" + std::to_string(o->label_image_spacing()) + ");\n");
+  if (dynamic_cast<Valuator_Node*>(this)) {
+    Fl_Valuator* v = (Fl_Valuator*)o;
+    Fl_Valuator* t = (Fl_Valuator*)(tplate);
+    if (v->minimum()!=t->minimum())
+      f.write_c(f.indent() + var + "->minimum(" + fluid::io::to_string_g(v->minimum()) + ");\n");
+    if (v->maximum()!=t->maximum())
+      f.write_c(f.indent() + var + "->maximum(" + fluid::io::to_string_g(v->maximum()) + ");\n");
+    if (v->step()!=t->step())
+      f.write_c(f.indent() + var + "->step(" + fluid::io::to_string_g(v->step()) + ");\n");
+    if (v->value()) {
+      if (dynamic_cast<Scrollbar_Node*>(this)) { // Fl_Scrollbar::value(double) is not available
+        f.write_c(f.indent() + var + "->Fl_Slider::value(" + fluid::io::to_string_g(v->value()) + ");\n");
+      } else {
+        f.write_c(f.indent() + var + "->value(" + fluid::io::to_string_g(v->value()) + ");\n");
+      }
+    }
+    if (dynamic_cast<Slider_Node*>(this)) {
+      double x = ((Fl_Slider*)v)->slider_size();
+      double y = ((Fl_Slider*)t)->slider_size();
+      if (x != y) f.write_c(f.indent() + var + "->slider_size(" + fluid::io::to_string_g(x) + ");\n");
+    }
+  }
+  if (dynamic_cast<Spinner_Node*>(this)) {
+    Fl_Spinner* v = (Fl_Spinner*)o;
+    Fl_Spinner* t = (Fl_Spinner*)(tplate);
+    if (v->minimum()!=t->minimum())
+      f.write_c(f.indent() + var + "->minimum(" + fluid::io::to_string_g(v->minimum()) + ");\n");
+    if (v->maximum()!=t->maximum())
+      f.write_c(f.indent() + var + "->maximum(" + fluid::io::to_string_g(v->maximum()) + ");\n");
+    if (v->step()!=t->step())
+      f.write_c(f.indent() + var + "->step(" + fluid::io::to_string_g(v->step()) + ");\n");
+    if (v->value()!=1.0f)
+      f.write_c(f.indent() + var + "->value(" + fluid::io::to_string_g(v->value()) + ");\n");
+  }
+
+  {Fl_Font ff; int fs; Fl_Color fc; if (textstuff(4,ff,fs,fc)) {
+    Fl_Font g; int s; Fl_Color c; textstuff(0,g,s,c);
+    if (g != ff) f.write_c(f.indent() + var + "->textfont(" + std::to_string(g) + ");\n");
+    if (s != fs) f.write_c(f.indent() + var + "->textsize(" + std::to_string(s) + ");\n");
+    if (c != fc) write_color(f, "textcolor", c);
+  }}
+  std::string ud = user_data();
+  if (is_in_class() && !parent->is_widget()) ud = "this";
+  if (!callback().empty()) {
+    if (is_lambda(callback())) { // lambda callback function
+      f.write_c(f.indent() + var + "->callback(\n");
+      f.tag(Mergeback::Tag::GENERIC, Mergeback::Tag::WIDGET_CALLBACK, 0);
+      f.write_c_indented(callback(), 1, 0);
+      f.write_c("\n");
+      f.tag(Mergeback::Tag::WIDGET_CALLBACK, Mergeback::Tag::GENERIC, get_uid());
+      f.write_c(f.indent());
+    } else {
+      f.write_c(f.indent() + var + "->callback((Fl_Callback*)" + callback_name(f));
+    }
+    if (!ud.empty())
+      f.write_c(", (void*)(" + ud + "));\n");
+    else
+      f.write_c(");\n");
+  } else if (!ud.empty()) {
+    f.write_c(f.indent() + var + "->user_data((void*)(" + ud + "));\n");
+  }
+  if (o->align() != tplate->align() || !subclass().empty()) {
+    int i = o->align();
+    f.write_c(f.indent() + var + "->align(Fl_Align("
+            + item_name(alignmenu, i & ~FL_ALIGN_INSIDE));
+    if (i & FL_ALIGN_INSIDE) f.write_c("|FL_ALIGN_INSIDE");
+    f.write_c("));\n");
+  }
+  Fl_When ww = o->when();
+  if (ww != tplate->when() || !subclass().empty())
+    f.write_c(f.indent() + var + "->when(" + when_symbol_name(ww) + ");\n");
+  if (!o->visible() && o->parent())
+    f.write_c(f.indent() + var + "->hide();\n");
+  if (!o->active())
+    f.write_c(f.indent() + var + "->deactivate();\n");
+  if (!dynamic_cast<Group_Node*>(this) && resizable())
+    f.write_c(f.indent() + "Fl_Group::current()->resizable(" + var + ");\n");
+  if (hotspot()) {
+    if (is_class())
+      f.write_c(f.indent() + "hotspot(" + var + ");\n");
+    else if (dynamic_cast<Window_Node*>(this))
+      f.write_c(f.indent() + var + "->hotspot(" + var + ");\n");
+    else
+      f.write_c(f.indent() + var + "->window()->hotspot(" + var + ");\n");
+  }
+}
+
+/**
+ Write the code to end instantiation of this widget, called by write_code2.
+ \param[in] f Code_Writer object to write the code to.
+ */
+void Widget_Node::write_block_close(fluid::io::Code_Writer& f) {
+  f.indent_less();
+  f.write_c(f.indent() + "} // " + subclassname(this) + "* "
+          + (!name().empty() ? name() : "o") + "\n");
+}
+
+/**
+ Write the code after the children of the widget are created.
+ \param[in] f Code_Writer object to write the code to.
+ */
+void Widget_Node::write_code2(fluid::io::Code_Writer& f) {
+  if (!extra_code(3).empty()) {
+    f.tag(Mergeback::Tag::GENERIC, Mergeback::Tag::FINALIZE, 0);
+    f.write_c_indented(extra_code(3), 0, '\n');
+    f.tag(Mergeback::Tag::FINALIZE, Mergeback::Tag::GENERIC, get_uid());
+  }
+  write_block_close(f);
+}
+
+/**
+ Write all properties of this node, calls super class to write more properties.
+ \param[in] f Project_Writer object to write the properties to.
+ */
+void Widget_Node::write_properties(fluid::io::Project_Writer &f) {
+  Node::write_properties(f);
+  f.write_indent(level+1);
+  switch (public_) {
+    case 0: f.write_string("private"); break;
+    case 1: break;
+    case 2: f.write_string("protected"); break;
+  }
+  if (!tooltip().empty()) {
+    f.write_string("tooltip");
+    f.write_word(tooltip());
+  }
+  active_image.write_properties(f, false);
+  inactive_image.write_properties(f, true);
+  int wx = o->x();
+  int wy = o->y();
+  fluid::designer_stored_xy(o, wx, wy);
+  f.write_string("xywh {%d %d %d %d}", wx, wy, o->w(), o->h());
+  Fl_Widget* tplate = ((Widget_Node*)factory)->o;
+  if (dynamic_cast<Spinner_Node*>(this) && ((Fl_Spinner*)o)->type() != ((Fl_Spinner*)tplate)->type()) {
+    f.write_string("type");
+    f.write_word(item_name(subtypes(), ((Fl_Spinner*)o)->type()));
+  } else if (subtypes() && (o->type() != tplate->type() || dynamic_cast<Window_Node*>(this))) {
+    f.write_string("type");
+    f.write_word(item_name(subtypes(), o->type()));
+  }
+  if (o->box() != tplate->box()) {
+    f.write_string("box"); f.write_word(boxname(o->box()));}
+  if (dynamic_cast<Input_Node*>(this)) {
+    Fl_Input_* b = (Fl_Input_*)o;
+    if (b->shortcut()) f.write_string("shortcut 0x%x", b->shortcut());
+  }
+  if (dynamic_cast<Value_Input_Node*>(this)) {
+    Fl_Value_Input* b = (Fl_Value_Input*)o;
+    if (b->shortcut()) f.write_string("shortcut 0x%x", b->shortcut());
+  }
+  if (dynamic_cast<Text_Display_Node*>(this)) {
+    Fl_Text_Display* b = (Fl_Text_Display*)o;
+    if (b->shortcut()) f.write_string("shortcut 0x%x", b->shortcut());
+  }
+  if (dynamic_cast<Button_Node*>(this)) {
+    Fl_Button* b = (Fl_Button*)o;
+    if (b->down_box()) {
+      f.write_string("down_box"); f.write_word(boxname(b->down_box()));}
+    if (b->shortcut()) f.write_string("shortcut 0x%x", b->shortcut());
+    if (b->value()) f.write_string("value 1");
+  } else if (dynamic_cast<Input_Choice_Node*>(this)) {
+    Fl_Input_Choice* b = (Fl_Input_Choice*)o;
+    if (b->down_box()) {
+      f.write_string("down_box"); f.write_word(boxname(b->down_box()));}
+  } else if (dynamic_cast<Menu_Base_Node*>(this)) {
+    Fl_Menu_* b = (Fl_Menu_*)o;
+    if (b->down_box()) {
+      f.write_string("down_box"); f.write_word(boxname(b->down_box()));}
+  }
+  if (o->color()!=tplate->color())
+    f.write_string("color %u", o->color());
+  if (o->selection_color()!=tplate->selection_color())
+    f.write_string("selection_color %u", o->selection_color());
+  if (o->labeltype()!=tplate->labeltype()) {
+    f.write_string("labeltype");
+    f.write_word(item_name(labeltypemenu, o->labeltype()));
+  }
+  if (o->labelfont()!=tplate->labelfont())
+    f.write_string("labelfont %d", o->labelfont());
+  if (o->labelsize()!=tplate->labelsize())
+    f.write_string("labelsize %d", o->labelsize());
+  if (o->labelcolor()!=tplate->labelcolor())
+    f.write_string("labelcolor %u", o->labelcolor());
+  if (o->align()!=tplate->align())
+    f.write_string("align %u", o->align());
+  if (o->horizontal_label_margin()!=tplate->horizontal_label_margin())
+    f.write_string("h_label_margin %d", o->horizontal_label_margin());
+  if (o->vertical_label_margin()!=tplate->vertical_label_margin())
+    f.write_string("v_label_margin %d", o->vertical_label_margin());
+  if (o->label_image_spacing()!=tplate->label_image_spacing())
+    f.write_string("image_spacing %d", o->label_image_spacing());
+  if (o->when() != tplate->when())
+    f.write_string("when %u", o->when());
+  if (dynamic_cast<Valuator_Node*>(this)) {
+    Fl_Valuator* v = (Fl_Valuator*)o;
+    Fl_Valuator* t = (Fl_Valuator*)(tplate);
+    if (v->minimum()!=t->minimum()) f.write_string("minimum %g",v->minimum());
+    if (v->maximum()!=t->maximum()) f.write_string("maximum %g",v->maximum());
+    if (v->step()!=t->step()) f.write_string("step %g",v->step());
+    if (v->value()!=0.0) f.write_string("value %g",v->value());
+    if (dynamic_cast<Slider_Node*>(this)) {
+      double x = ((Fl_Slider*)v)->slider_size();
+      double y = ((Fl_Slider*)t)->slider_size();
+      if (x != y) f.write_string("slider_size %g", x);
+    }
+  }
+  if (dynamic_cast<Spinner_Node*>(this)) {
+    Fl_Spinner* v = (Fl_Spinner*)o;
+    Fl_Spinner* t = (Fl_Spinner*)(tplate);
+    if (v->minimum()!=t->minimum()) f.write_string("minimum %g",v->minimum());
+    if (v->maximum()!=t->maximum()) f.write_string("maximum %g",v->maximum());
+    if (v->step()!=t->step()) f.write_string("step %g",v->step());
+    if (v->value()!=1.0) f.write_string("value %g",v->value());
+  }
+  {Fl_Font ff; int fs; Fl_Color fc; if (textstuff(4,ff,fs,fc)) {
+    Fl_Font ft; int s; Fl_Color c; textstuff(0,ft,s,c);
+    if (ft != ff) f.write_string("textfont %d", ft);
+    if (s != fs) f.write_string("textsize %d", s);
+    if (c != fc) f.write_string("textcolor %u", c);
+  }}
+  if (!o->visible() && !override_visible_) f.write_string("hide");
+  if (!o->active()) f.write_string("deactivate");
+  if (resizable()) f.write_string("resizable");
+  if (hotspot()) f.write_string(dynamic_cast<Menu_Item_Node*>(this) ? "divider" : "hotspot");
+  if (dynamic_cast<Menu_Item_Node*>(this)) {
+    auto nd = dynamic_cast<Menu_Item_Node*>(this);
+    if (nd && nd->headline()) f.write_string("headline");
+  }
+  for (int n=0; n < NUM_EXTRA_CODE; n++) if (!extra_code(n).empty()) {
+    f.write_indent(level+1);
+    f.write_string("code%d",n);
+    f.write_word(extra_code(n).c_str());
+  }
+  if (!subclass().empty()) {
+    f.write_indent(level+1);
+    f.write_string("class");
+    f.write_word(subclass());
+  }
+}
+
+/**
+ Read a property of this node, calls super class if property is not recognized.
+ \param[in] f Project_Reader object to read the property from.
+ \param[in] c Name of the property to read.
+ */
+void Widget_Node::read_property(fluid::io::Project_Reader &f, const std::string& c)
+{
+  // Assign code according to the first non-whitespace character to stay
+  // compatible with pre 1.5.0.20 project files.
+  auto reshuffle = [this](const char* c) -> void {
+    while (fl_ascii_isspace(*c)) c++;
+    if ((*c == '#')
+       || (strncmp(c, "extern", 6) == 0)
+       || (strncmp(c, "typedef", 7) == 0)
+       || (strncmp(c, "using", 5) == 0))
+    {
+        extra_code_append(0, c);
+    } else {
+        extra_code_append(3, c);
+    }
+  };
+
+  int x,y,w,h; Fl_Font ft; int s; Fl_Color cc;
+  if (c == "private") {
+    public_ = 0;
+  } else if (c == "protected") {
+    public_ = 2;
+  } else if (c == "xywh") {
+    if (sscanf(f.read_word().c_str(),"%d %d %d %d",&x,&y,&w,&h) == 4) {
+      x += Fluid.pasteoffset;
+      y += Fluid.pasteoffset;
+      // Reading FLTK 2 projects into FLTK 1 Fluid requires adjusting the x
+      // and y coordinates to be relative to the parent window, if any.
+      if (f.read_version>=2.0 && f.read_version<3.0 && o->parent() && o->parent()!=o->window()) {
+        x += o->parent()->x();
+        y += o->parent()->y();
+      }
+      o->resize(x,y,w,h);
+    }
+  } else if (c == "tooltip") {
+    tooltip(f.read_word());
+  } else if (c == "scale_image") {
+    if (sscanf(f.read_word().c_str(),"%d %d",&w,&h) == 2) {
+      active_image.scale_w = w;
+      active_image.scale_h = h;
+    }
+  } else if (c == "image") {
+    active_image.set(f.read_word(), dynamic_cast<Window_Node*>(this) ? nullptr : o, false);
+    if (!dynamic_cast<Window_Node*>(this)) redraw();
+    // starting in 2023, `image` is always followed by `compress_image`
+    // the code below is for compatibility with older .fl files
+    std::string ext = fl_filename_ext_str(active_image.name);
+    if (   (ext != ".jpg")
+        && (ext != ".png")
+        && (ext != ".svg")
+        && (ext != ".svgz"))
+      active_image.compress = 0; // if it is neither of those, default to uncompressed
+  } else if (c == "bind_image") {
+    active_image.bind = f.read_int();
+  } else if (c == "compress_image") {
+    active_image.compress = f.read_int();
+  } else if (c == "scale_deimage") {
+    if (sscanf(f.read_word().c_str(),"%d %d",&w,&h) == 2) {
+      inactive_image.scale_w = w;
+      inactive_image.scale_h = h;
+    }
+  } else if (c == "deimage") {
+    inactive_image.set(f.read_word(), dynamic_cast<Window_Node*>(this) ? nullptr : o, true);
+    if (!dynamic_cast<Window_Node*>(this)) redraw();
+    // starting in 2023, `deimage` is always followed by `compress_deimage`
+    // the code below is for compatibility with older .fl files
+    std::string ext = fl_filename_ext_str(inactive_image.name);
+    if (   (ext != ".jpg")
+        && (ext != ".png")
+        && (ext != ".svg")
+        && (ext != ".svgz"))
+      inactive_image.compress = 0; // if it is neither of those, default to uncompressed
+  } else if (c == "bind_deimage") {
+    inactive_image.bind = f.read_int();
+  } else if (c == "compress_deimage") {
+    inactive_image.compress = f.read_int();
+  } else if (c == "type") {
+    if (dynamic_cast<Spinner_Node*>(this))
+      ((Fl_Spinner*)o)->type(item_number(subtypes(), f.read_word().c_str()));
+    else
+      o->type(item_number(subtypes(), f.read_word().c_str()));
+  } else if (c == "box") {
+    std::string value = f.read_word();
+    if ((x = boxnumber(value.c_str()))) {
+      if (x == ZERO_ENTRY) x = 0;
+      o->box((Fl_Boxtype)x);
+    } else if (sscanf(value.c_str(),"%d",&x) == 1) o->box((Fl_Boxtype)x);
+  } else if (dynamic_cast<Button_Node*>(this) && c == "down_box") {
+    std::string value = f.read_word();
+    if ((x = boxnumber(value.c_str()))) {
+      if (x == ZERO_ENTRY) x = 0;
+      ((Fl_Button*)o)->down_box((Fl_Boxtype)x);
+    }
+  } else if (dynamic_cast<Input_Choice_Node*>(this) && c == "down_box") {
+    std::string value = f.read_word();
+    if ((x = boxnumber(value.c_str()))) {
+      if (x == ZERO_ENTRY) x = 0;
+      ((Fl_Input_Choice*)o)->down_box((Fl_Boxtype)x);
+    }
+  } else if (dynamic_cast<Menu_Base_Node*>(this) && c == "down_box") {
+    std::string value = f.read_word();
+    if ((x = boxnumber(value.c_str()))) {
+      if (x == ZERO_ENTRY) x = 0;
+      ((Fl_Menu_*)o)->down_box((Fl_Boxtype)x);
+    }
+  } else if (is_button() && c == "value") {
+    ((Fl_Button*)o)->value(f.read_int());
+  } else if (c == "color") {
+    std::string cw = f.read_word();
+    if (cw[0]=='0' && cw[1]=='x') {
+      sscanf(cw.c_str(),"0x%x",&x);
+      o->color(x);
+    } else {
+      int n = sscanf(cw.c_str(),"%d %d",&x,&y);
+      if (n == 2) { // back compatibility...
+        if (x != 47) o->color(x);
+        o->selection_color(y);
+      } else {
+        o->color(x);
+      }
+    }
+  } else if (c == "selection_color") {
+    if (sscanf(f.read_word().c_str(),"%d",&x)) o->selection_color(x);
+  } else if (c == "labeltype") {
+    std::string type = f.read_word();
+    if (type == "image") {
+      if (!Fluid.proj.image_assets.find_or_create(label()))
+        f.read_error("Image file '%s' not found", label().c_str());
+      active_image.set(label(), dynamic_cast<Window_Node*>(this) ? nullptr : o, false);
+      if (!dynamic_cast<Window_Node*>(this)) redraw();
+      label("");
+    } else {
+      o->labeltype((Fl_Labeltype)item_number(labeltypemenu,type.c_str()));
+    }
+  } else if (c == "labelfont") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->labelfont(x);
+  } else if (c == "labelsize") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->labelsize(x);
+  } else if (c == "labelcolor") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->labelcolor(x);
+  } else if (c == "align") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->align(x);
+  } else if (c == "h_label_margin") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->horizontal_label_margin(x);
+  } else if (c == "v_label_margin") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->vertical_label_margin(x);
+  } else if (c == "image_spacing") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->label_image_spacing(x);
+  } else if (c == "when") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) o->when(x);
+  } else if (c == "minimum") {
+    if (dynamic_cast<Valuator_Node*>(this)) ((Fl_Valuator*)o)->minimum(strtod(f.read_word().c_str(),nullptr));
+    if (dynamic_cast<Spinner_Node*>(this)) ((Fl_Spinner*)o)->minimum(strtod(f.read_word().c_str(),nullptr));
+  } else if (c == "maximum") {
+    if (dynamic_cast<Valuator_Node*>(this)) ((Fl_Valuator*)o)->maximum(strtod(f.read_word().c_str(),nullptr));
+    if (dynamic_cast<Spinner_Node*>(this)) ((Fl_Spinner*)o)->maximum(strtod(f.read_word().c_str(),nullptr));
+  } else if (c == "step") {
+    if (dynamic_cast<Valuator_Node*>(this)) ((Fl_Valuator*)o)->step(strtod(f.read_word().c_str(),nullptr));
+    if (dynamic_cast<Spinner_Node*>(this)) ((Fl_Spinner*)o)->step(strtod(f.read_word().c_str(),nullptr));
+  } else if (c == "value") {
+    if (dynamic_cast<Valuator_Node*>(this)) ((Fl_Valuator*)o)->value(strtod(f.read_word().c_str(),nullptr));
+    if (dynamic_cast<Spinner_Node*>(this)) ((Fl_Spinner*)o)->value(strtod(f.read_word().c_str(),nullptr));
+  } else if ( (c == "slider_size" || c == "size") && dynamic_cast<Slider_Node*>(this)) {
+    ((Fl_Slider*)o)->slider_size(strtod(f.read_word().c_str(),nullptr));
+  } else if (c == "textfont") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) {ft=(Fl_Font)x; textstuff(1,ft,s,cc);}
+  } else if (c == "textsize") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) {s=x; textstuff(2,ft,s,cc);}
+  } else if (c == "textcolor") {
+    if (sscanf(f.read_word().c_str(),"%d",&x) == 1) {cc=(Fl_Color)x;textstuff(3,ft,s,cc);}
+  } else if (c == "hide") {
+    o->hide();
+  } else if (c == "deactivate") {
+    o->deactivate();
+  } else if (c == "resizable") {
+    resizable(1);
+  } else if (c == "hotspot" || c == "divider") {
+    hotspot(1);
+  } else if (c == "headline") {
+    if (dynamic_cast<Menu_Item_Node*>(this)) {
+      auto nd = dynamic_cast<Menu_Item_Node*>(this);
+      if (nd) nd->headline(true);
+    }
+  } else if (c == "class") {
+    subclass(f.read_word());
+  } else if (c == "shortcut") {
+    int shortcut = (int)strtol(f.read_word().c_str(),nullptr,0);
+    if (is_button()) ((Fl_Button*)o)->shortcut(shortcut);
+    else if (dynamic_cast<Input_Node*>(this)) ((Fl_Input_*)o)->shortcut(shortcut);
+    else if (dynamic_cast<Value_Input_Node*>(this)) ((Fl_Value_Input*)o)->shortcut(shortcut);
+    else if (dynamic_cast<Text_Display_Node*>(this)) ((Fl_Text_Display*)o)->shortcut(shortcut);
+  } else if (c == "code0") {
+    if (f.read_version < 1.050020) {
+      reshuffle(f.read_word().c_str());
+    } else {
+      extra_code(0, f.read_word());
+    }
+  } else if (c == "code1") {
+    if (f.read_version < 1.050020) {
+      reshuffle(f.read_word().c_str());
+    } else {
+      extra_code(1, f.read_word());
+    }
+  } else if (c == "code2") {
+    if (f.read_version < 1.050020) {
+      reshuffle(f.read_word().c_str());
+    } else {
+      extra_code(2, f.read_word());
+    }
+  } else if (c == "code3") {
+    if (f.read_version < 1.050020) {
+      reshuffle(f.read_word().c_str());
+    } else {
+      extra_code(3, f.read_word());
+    }
+  } else if (c == "extra_code") { // fdesign file compatibility
+    if (f.read_version < 1.050020) {
+      reshuffle(f.read_word().c_str());
+    } else {
+      extra_code(3, f.read_word());
+    }
+  } else {
+    Node::read_property(f, c);
+  }
+}
+
+// ---- Back compatibility to Forms' FDesign project files
+
+Fl_Menu_Item boxmenu1[] = {
+  // these extra ones are for looking up fdesign saved strings:
+  {"NO_FRAME",          0,nullptr,(void *)FL_NO_BOX},
+  {"ROUNDED3D_UPBOX",   0,nullptr,(void *)FL_ROUND_UP_BOX},
+  {"ROUNDED3D_DOWNBOX", 0,nullptr,(void *)FL_ROUND_DOWN_BOX},
+  {"OVAL3D_UPBOX",      0,nullptr,(void *)FL_ROUND_UP_BOX},
+  {"OVAL3D_DOWNBOX",    0,nullptr,(void *)FL_ROUND_DOWN_BOX},
+  {"0",                 0,nullptr,(void *)ZERO_ENTRY},
+  {"1",                 0,nullptr,(void *)FL_UP_BOX},
+  {"2",                 0,nullptr,(void *)FL_DOWN_BOX},
+  {"3",                 0,nullptr,(void *)FL_FLAT_BOX},
+  {"4",                 0,nullptr,(void *)FL_BORDER_BOX},
+  {"5",                 0,nullptr,(void *)FL_SHADOW_BOX},
+  {"6",                 0,nullptr,(void *)FL_FRAME_BOX},
+  {"7",                 0,nullptr,(void *)FL_ROUNDED_BOX},
+  {"8",                 0,nullptr,(void *)FL_RFLAT_BOX},
+  {"9",                 0,nullptr,(void *)FL_RSHADOW_BOX},
+  {"10",                0,nullptr,(void *)FL_UP_FRAME},
+  {"11",                0,nullptr,(void *)FL_DOWN_FRAME},
+  {nullptr}};
+
+int lookup_symbol(const char *, int &, int numberok = 0);
+
+/**
+ Back compatibility to Forms FDesign project files.
+ */
+int Widget_Node::read_fdesign(const std::string& propname, const std::string& value) {
+  int v;
+  if (propname == "box") {
+    float x,y,w,h;
+    if (sscanf(value.c_str(),"%f %f %f %f",&x,&y,&w,&h) == 4) {
+      if (fluid::io::fdesign_flip) {
+        Node* p;
+        for (p = parent; p && !dynamic_cast<Window_Node*>(p); p = p->parent) {/*empty*/}
+        if (p && p->is_widget()) y = ((Widget_Node*)p)->o->h()-(y+h);
+      }
+      x += Fluid.pasteoffset;
+      y += Fluid.pasteoffset;
+      o->resize(int(x),int(y),int(w),int(h));
+    }
+  } else if (propname == "label") {
+    label(value);
+  } else if (propname == "name") {
+    this->name(value);
+  } else if (propname == "callback") {
+    callback(value); user_data_type("long");
+  } else if (propname == "argument") {
+    user_data(value);
+  } else if (propname == "shortcut") {
+    if (!value.empty()) {
+      extra_code(0, "o->shortcut(\"" + value + "\");");
+    }
+  } else if (propname == "style") {
+    if (value.compare(0, 9, "FL_NORMAL") == 0) return 1;
+    if (!lookup_symbol(value.c_str(),v,1)) return 0;
+    o->labelfont(v); o->labeltype((Fl_Labeltype)(v>>8));
+  } else if (propname == "size") {
+    if (!lookup_symbol(value.c_str(),v,1)) return 0;
+    o->labelsize(v);
+  } else if (propname == "type") {
+    if (value.compare(0, 6, "NORMAL") == 0) return 1;
+    if (lookup_symbol(value.c_str(),v,1)) {o->type(v); return 1;}
+    if (value.size() >= 5 && value.compare(value.size()-5, 5, "FRAME") == 0) goto TRY_BOXTYPE;
+    if (value.size() >= 3 && value.compare(value.size()-3, 3, "BOX") == 0) goto TRY_BOXTYPE;
+    return 0;
+  } else if (propname == "lcol") {
+    if (!lookup_symbol(value.c_str(),v,1)) return 0;
+    o->labelcolor(v);
+  } else if (propname == "return") {
+    if (!lookup_symbol(value.c_str(),v,0)) return 0;
+    o->when(v|FL_WHEN_RELEASE);
+  } else if (propname == "alignment") {
+    if (!lookup_symbol(value.c_str(),v)) {
+      // convert old numeric values:
+      int v1 = atoi(value.c_str()); if (v1 <= 0 && value != "0") return 0;
+      v = 0;
+      if (v1 >= 5) {v = FL_ALIGN_INSIDE; v1 -= 5;}
+      switch (v1) {
+      case 0: v += FL_ALIGN_TOP; break;
+      case 1: v += FL_ALIGN_BOTTOM; break;
+      case 2: v += FL_ALIGN_LEFT; break;
+      case 3: v += FL_ALIGN_RIGHT; break;
+      case 4: v += FL_ALIGN_CENTER; break;
+      default: return 0;
+      }
+    }
+    o->align(v);
+  } else if (propname == "resizebox") {
+    resizable(1);
+  } else if (propname == "colors") {
+    size_t sp = value.find(' ');
+    if (sp == std::string::npos) return 0;
+    std::string c1 = value.substr(0, sp);
+    std::string c2 = value.substr(sp + 1);
+    int v1;
+    if (!lookup_symbol(c1.c_str(),v,1) || !lookup_symbol(c2.c_str(),v1,1)) return 0;
+    o->color(v,v1);
+  } else if (propname == "resize") {
+    return value == "FL_RESIZE_ALL";
+  } else if (propname == "gravity") {
+    return value == "FL_NoGravity FL_NoGravity";
+  } else if (propname == "boxtype") {
+  TRY_BOXTYPE:
+    int x = boxnumber(value.c_str());
+    if (!x) {x = item_number(boxmenu1, value.c_str()); if (x < 0) return 0;}
+    if (x == ZERO_ENTRY) {
+      x = 0;
+      if (o->box() != ((Widget_Node*)factory)->o->box()) return 1; // kludge for frame
+    }
+    o->box((Fl_Boxtype)x);
+  } else {
+    return 0;
+  }
+  return 1;
+}
+
+// ---- Live mode support
+
+/**
+ Create a live widget for this node.
+ \return the live widget
+ */
+Fl_Widget* Widget_Node::enter_live_mode() {
+  live_widget = widget(o->x(), o->y(), o->w(), o->h());
+  if (live_widget)
+    copy_properties();
+  return live_widget;
+}
+
+/**
+ Create a live mode widget and all its children.
+ \param grp the group to add widgets to
+ \return the live mode widget
+ */
+Fl_Widget* Widget_Node::propagate_live_mode(Fl_Group* grp) {
+  live_widget = grp;
+  copy_properties();
+  Node* n;
+  for (n = next; n && n->level > level; n = n->next) {
+    if (n->level == level+1) {
+      Fl_Widget* proxy_child = n->enter_live_mode();
+      if (proxy_child && n->is_widget() && ((Widget_Node*)n)->resizable()) {
+        grp->resizable(proxy_child);
+      }
+    }
+  }
+  grp->end();
+  live_widget = grp;
+  copy_properties_for_children();
+  return live_widget;
+}
+
+/**
+ Copy the properties from the edit widget to the live widget.
+ */
+void Widget_Node::copy_properties() {
+  if (!live_widget)
+    return;
+
+  Fl_Font ff = 0;
+  int fs = 0;
+  Fl_Color fc = 0;
+  textstuff(0, ff, fs, fc);
+
+  // copy all attributes common to all widget types
+  Fl_Widget* w = live_widget;
+  w->label(o->label());
+  if (tooltip().empty())
+    w->tooltip(nullptr);
+  else
+    w->copy_tooltip(tooltip().c_str());
+  w->type(o->type());
+  w->box(o->box());
+  w->color(o->color());
+  w->selection_color(o->selection_color());
+  w->labeltype(o->labeltype());
+  w->labelfont(o->labelfont());
+  w->labelsize(o->labelsize());
+  w->labelcolor(o->labelcolor());
+  w->align(o->align());
+  w->when(o->when());
+
+  // copy all attributes specific to widgets derived from Fl_Button
+  if (is_button()) {
+    Fl_Button* d = (Fl_Button*)live_widget, *s = (Fl_Button*)o;
+    d->down_box(s->down_box());
+    d->shortcut(s->shortcut());
+    d->value(s->value());
+  }
+
+  // copy all attributes specific to widgets derived from Fl_Input_
+  if (dynamic_cast<Input_Node*>(this)) {
+    Fl_Input_* d = (Fl_Input_*)live_widget, *s = (Fl_Input_*)o;
+    d->shortcut(s->shortcut());
+    d->textfont(ff);
+    d->textsize(fs);
+    d->textcolor(fc);
+  }
+
+  // copy all attributes specific to widgets derived from Fl_Value_Input
+  if (dynamic_cast<Value_Input_Node*>(this)) {
+    Fl_Value_Input* d = (Fl_Value_Input*)live_widget, *s = (Fl_Value_Input*)o;
+    d->shortcut(s->shortcut());
+    d->textfont(ff);
+    d->textsize(fs);
+    d->textcolor(fc);
+  }
+
+  // copy all attributes specific to widgets derived from Fl_Text_Display
+  if (dynamic_cast<Text_Display_Node*>(this)) {
+    Fl_Text_Display* d = (Fl_Text_Display*)live_widget, *s = (Fl_Text_Display*)o;
+    d->shortcut(s->shortcut());
+    d->textfont(ff);
+    d->textsize(fs);
+    d->textcolor(fc);
+  }
+
+  // copy all attributes specific to Fl_Valuator and derived classes
+  if (dynamic_cast<Valuator_Node*>(this)) {
+    Fl_Valuator* d = (Fl_Valuator*)live_widget, *s = (Fl_Valuator*)o;
+    d->minimum(s->minimum());
+    d->maximum(s->maximum());
+    d->step(s->step());
+    d->value(s->value());
+    if (dynamic_cast<Slider_Node*>(this)) {
+      Fl_Slider* d = (Fl_Slider*)live_widget, *s = (Fl_Slider*)o;
+      d->slider_size(s->slider_size());
+    }
+  }
+
+  // copy all attributes specific to Fl_Spinner and derived classes
+  if (dynamic_cast<Spinner_Node*>(this)) {
+    Fl_Spinner* d = (Fl_Spinner*)live_widget, *s = (Fl_Spinner*)o;
+    d->minimum(s->minimum());
+    d->maximum(s->maximum());
+    d->step(s->step());
+    d->value(s->value());
+  }
+
+  if (!o->visible())
+    w->hide();
+  if (!o->active())
+    w->deactivate();
+}
+
