@@ -207,7 +207,10 @@ void Application::run_interactive(int argc, char **argv, const std::string& file
   Fl_File_Icon::load_system_icons();
   main_window->callback([](Fl_Widget*, void*) { Fluid.quit(); });
   make_fluid_icon(main_window); // assign icon to main window
-  position_window(main_window,"main_window_pos", 1, 10, 30, 330, 450);
+  // The designer has already chosen a size. A missing saved position must keep that size,
+  // not the old 330x450 editor default.
+  position_window(main_window, "main_window_pos", 1,
+                  main_window->x(), main_window->y(), main_window->w(), main_window->h());
   if (g_shell_config) {
     g_shell_config->read(preferences, fluid::Tool_Store::USER);
     g_shell_config->update_settings_dialog();
@@ -221,7 +224,6 @@ void Application::run_interactive(int argc, char **argv, const std::string& file
     // Open previous file when no file specified...
     open_project_file(history.abspath[0]);
   }
-  codeview_toggle_visibility();
 
   proj.undo.suspend();
   if (!filename.empty() && !fluid::io::read_file(proj, filename, 0)) {

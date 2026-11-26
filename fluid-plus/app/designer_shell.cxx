@@ -818,14 +818,10 @@ bool center_shows_code() {
   return g_shell && g_shell->code_mode;
 }
 
-// Panels hidden temporarily for code mode. On exit or when saving the layout, write the design-mode state back so this hide is not stored as the user's layout.
+// Code mode hides the design panels. The dock string from just before that hide is what gets written,
+// so leaving or quitting does not store the temporary arrangement.
 bool g_suspend_save = false;
-bool g_keep_props = true;
-bool g_keep_bin = true;
-bool g_keep_snippets = true;
-bool g_fold_props = false;
-bool g_fold_bin = false;
-bool g_fold_snippets = false;
+std::string g_design_dock;
 
 void expose_shell() {
   if (Fluid.main_window) Fluid.main_window->damage(FL_DAMAGE_ALL);
@@ -1697,16 +1693,6 @@ Fl_Window *designer_desk_viewport() {
   return g_shell->desktop->viewport;
 }
 
-void show_kept_panels() {
-  if (!g_shell || !g_shell->host) return;
-  if (g_keep_props) g_shell->host->show_panel(kProps);
-  if (g_keep_bin) g_shell->host->show_panel(kToolbox);
-  if (g_keep_snippets) g_shell->host->show_panel(kCode);
-  if (g_keep_props && g_fold_props) g_shell->host->fold_panel(kProps, true);
-  if (g_keep_bin && g_fold_bin) g_shell->host->fold_panel(kToolbox, true);
-  if (g_keep_snippets && g_fold_snippets) g_shell->host->fold_panel(kCode, true);
-}
-
 void hide_design_panels() {
   if (!g_shell || !g_shell->host) return;
   if (g_shell->host->panel_shown(kProps)) g_shell->host->hide_panel(kProps);
@@ -1728,19 +1714,14 @@ void designer_set_code_mode(bool on) {
   }
   g_suspend_save = true;
   if (on) {
-    g_keep_props = g_shell->host->panel_shown(kProps);
-    g_keep_bin = g_shell->host->panel_shown(kToolbox);
-    g_keep_snippets = g_shell->host->panel_shown(kCode);
-    g_fold_props = g_shell->host->panel_collapsed(kProps);
-    g_fold_bin = g_shell->host->panel_collapsed(kToolbox);
-    g_fold_snippets = g_shell->host->panel_collapsed(kCode);
+    g_design_dock = g_shell->host->save();
     hide_design_panels();
     if (Fl_Window *form = g_shell->desktop ? g_shell->desktop->form() : nullptr) form->hide();
   }
   g_shell->code_mode = on;
   code_stage_set_active(on);
   if (!on) {
-    show_kept_panels();
+    if (!g_design_dock.empty()) g_shell->host->restore(g_design_dock);
     if (Fl_Window *form = g_shell->desktop ? g_shell->desktop->form() : nullptr) form->show();
   }
   g_suspend_save = false;
@@ -1777,18 +1758,20 @@ void designer_reset_layout() {
 
 void designer_save_layout() {
   if (!g_shell || !g_shell->host) return;
-  bool code = g_shell->code_mode;
-  if (code) {
-    g_suspend_save = true;
-    show_kept_panels();
-  }
+  const std::string layout = g_shell->code_mode && !g_design_dock.empty()
+                                 ? g_design_dock
+                                 : g_shell->host->save();
   Fl_Preferences prefs(Fluid.preferences, "designer");
-  prefs.set("dock", g_shell->host->save().c_str());
-  Fluid.preferences.flush();
-  if (code) {
-    hide_design_panels();
-    g_suspend_save = false;
+  prefs.set("dock", layout.c_str());
+  if (Fluid.main_window) {
+    Fl_Preferences pos(Fluid.preferences, "main_window_pos");
+    pos.set("x", Fluid.main_window->x());
+    pos.set("y", Fluid.main_window->y());
+    pos.set("w", Fluid.main_window->w());
+    pos.set("h", Fluid.main_window->h());
+    pos.set("visible", 1);
   }
+  Fluid.preferences.flush();
 }
 
 void install_designer_shell() {
@@ -1877,6 +1860,7 @@ void install_designer_shell() {
   g_shell->shell->resize(0, 0, app->w(), app->h());
   g_shell->host->restore(saved_layout());
   g_shell->host->on_change(layout_changed);
+  if (g_shell->modes) g_shell->modes->show_mode(false);
   sync_bin_menu();
   if (g_shell->desktop->viewport) g_shell->desktop->viewport->show();
   app->init_sizes();
