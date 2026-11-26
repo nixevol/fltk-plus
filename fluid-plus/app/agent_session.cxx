@@ -44,12 +44,15 @@ namespace fluid {
 namespace {
 
 struct J {
-  enum Kind { Null, Bool, Number, String, Array, Object } kind = Null;
-  bool b = false;
-  double n = 0;
+  enum Kind { Null, Bool, Number, String, Array, Object } kind;
+  bool b;
+  double n;
   std::string s;
   std::vector<J> a;
   std::vector<std::pair<std::string, J>> o;
+
+  // C++11: a default member initializer makes this a non-aggregate, so J{...} does not compile.
+  J() : kind(Null), b(false), n(0) {}
 
   const J *find(const std::string &key) const {
     if (kind != Object) return nullptr;
@@ -160,7 +163,9 @@ class Parser {
 public:
   const char *p;
   const char *end;
-  bool ok = true;
+  bool ok;
+
+  Parser(const char *begin, const char *stop) : p(begin), end(stop), ok(true) {}
 
   void skip() {
     while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
@@ -171,7 +176,12 @@ public:
     if (p >= end) { ok = false; return {}; }
     if (*p == '{') return object();
     if (*p == '[') return array();
-    if (*p == '"') return J{J::String, false, 0, string(), {}, {}};
+    if (*p == '"') {
+      J value;
+      value.kind = J::String;
+      value.s = string();
+      return value;
+    }
     if (*p == 't' || *p == 'f') return boolean();
     if (*p == 'n') { literal("null"); return {}; }
     if (*p == '-' || (*p >= '0' && *p <= '9')) return number();
@@ -284,7 +294,7 @@ private:
 };
 
 J parse_json(const std::string &text, bool &ok) {
-  Parser parser { text.data(), text.data() + text.size(), true };
+  Parser parser(text.data(), text.data() + text.size());
   J value = parser.parse();
   ok = parser.ok;
   return value;

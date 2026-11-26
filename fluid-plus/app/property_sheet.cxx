@@ -66,6 +66,25 @@ void clear_mixed() {
   mixed_editors.clear();
 }
 
+// A parameter declared auto is C++14. CI builds with -std=c++11.
+template <class Reader>
+bool fields_equal_text(const std::vector<Widget_Node *> &widgets, Reader reader, std::string &value) {
+  value = reader(widgets.front());
+  for (size_t i = 1; i < widgets.size(); i++) {
+    if (reader(widgets[i]) != value) return false;
+  }
+  return true;
+}
+
+template <class Reader>
+bool fields_equal_int(const std::vector<Widget_Node *> &widgets, Reader reader, int &value) {
+  value = (int)reader(widgets.front());
+  for (size_t i = 1; i < widgets.size(); i++) {
+    if ((int)reader(widgets[i]) != value) return false;
+  }
+  return true;
+}
+
 bool still_mixed(Fl_Widget *editor) {
   if (!editor || !mixed_editors.count(editor)) return false;
   if (auto *choice = dynamic_cast<Fl_Choice *>(editor)) {
@@ -1006,24 +1025,10 @@ void Property_Page::load_many(const std::vector<Widget_Node *> &widgets) {
   Fl_Group *saved = Fl_Group::current();
   body->begin();
 
-  auto same_text = [&](auto reader, std::string &value) {
-    value = reader(widgets.front());
-    for (size_t i = 1; i < widgets.size(); i++) {
-      if (reader(widgets[i]) != value) return false;
-    }
-    return true;
-  };
   std::string text;
-  bool mixed = !same_text([](Widget_Node *widget) { return widget->label(); }, text);
+  bool mixed = !fields_equal_text(widgets, [](Widget_Node *widget) { return widget->label(); }, text);
   add_multiline(PROP_LABEL, "Label", text, mixed);
 
-  auto same_int = [&](auto reader, int &value) {
-    value = reader(widgets.front());
-    for (size_t i = 1; i < widgets.size(); i++) {
-      if (reader(widgets[i]) != value) return false;
-    }
-    return true;
-  };
   int number = 0;
   int x = 0;
   int y = 0;
@@ -1039,9 +1044,9 @@ void Property_Page::load_many(const std::vector<Widget_Node *> &widgets) {
   }
   add_int(PROP_X, "X", x, !same_x);
   add_int(PROP_Y, "Y", y, !same_y);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->w(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->w(); }, number);
   add_int(PROP_W, "Width", number, mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->h(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->h(); }, number);
   add_int(PROP_H, "Height", number, mixed);
 
   bool all_windows = true;
@@ -1064,13 +1069,13 @@ void Property_Page::load_many(const std::vector<Widget_Node *> &widgets) {
     if (widget->subtypes() != subtypes) same_subtypes = false;
   }
 
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->box(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->box(); }, number);
   add_choice(PROP_BOX, "Box", number, box_items(), mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->color(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->color(); }, number);
   add_choice(PROP_COLOR, "Color", number, color_items(number), mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->selection_color(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->selection_color(); }, number);
   add_choice(PROP_SELECTION_COLOR, "Selection Color", number, color_items(number), mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->labelcolor(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->labelcolor(); }, number);
   add_choice(PROP_LABEL_COLOR, "Label Color", number, color_items(number), mixed);
   Fl_Font font = widgets.front()->o->labelfont();
   int size = widgets.front()->o->labelsize();
@@ -1079,41 +1084,41 @@ void Property_Page::load_many(const std::vector<Widget_Node *> &widgets) {
     if (widgets[i]->o->labelfont() != font || widgets[i]->o->labelsize() != size) same_font = false;
   }
   add_font(PROP_LABEL_FONT, "Label Font", font, size, !same_font);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->align() & FL_ALIGN_POSITION_MASK; }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->align() & FL_ALIGN_POSITION_MASK; }, number);
   add_choice(PROP_ALIGN, "Align", number, align_items(), mixed);
-  mixed = !same_int([](Widget_Node *widget) { return (widget->o->align() & FL_ALIGN_INSIDE) ? 1 : 0; }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return (widget->o->align() & FL_ALIGN_INSIDE) ? 1 : 0; }, number);
   add_choice(PROP_INSIDE, "Inside", number, std::vector<std::pair<std::string, int>>{
     {std::string(ui_text("No")), 0}, {std::string(ui_text("Yes")), 1}}, mixed);
-  mixed = !same_int([](Widget_Node *widget) { return (widget->o->align() & FL_ALIGN_WRAP) ? 1 : 0; }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return (widget->o->align() & FL_ALIGN_WRAP) ? 1 : 0; }, number);
   add_choice(PROP_WRAP, "Wrap", number, std::vector<std::pair<std::string, int>>{
     {std::string(ui_text("No")), 0}, {std::string(ui_text("Yes")), 1}}, mixed);
   if (no_windows) {
-    mixed = !same_int([](Widget_Node *widget) { return widget->o->visible() ? 1 : 0; }, number);
+    mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->visible() ? 1 : 0; }, number);
     add_choice(PROP_VISIBLE, "Visible", number, std::vector<std::pair<std::string, int>>{
       {std::string(ui_text("No")), 0}, {std::string(ui_text("Yes")), 1}}, mixed);
   }
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->active() ? 1 : 0; }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->active() ? 1 : 0; }, number);
   add_choice(PROP_ACTIVE, "Active", number, std::vector<std::pair<std::string, int>>{
     {std::string(ui_text("No")), 0}, {std::string(ui_text("Yes")), 1}}, mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->resizable() ? 1 : 0; }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->resizable() ? 1 : 0; }, number);
   add_choice(PROP_RESIZABLE, "Resizable", number, std::vector<std::pair<std::string, int>>{
     {std::string(ui_text("No")), 0}, {std::string(ui_text("Yes")), 1}}, mixed);
-  mixed = !same_text([](Widget_Node *widget) { return widget->tooltip(); }, text);
+  mixed = !fields_equal_text(widgets, [](Widget_Node *widget) { return widget->tooltip(); }, text);
   add_multiline(PROP_TOOLTIP, "Tooltip", text, mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->o->when(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->when(); }, number);
   add_choice(PROP_WHEN, "When", number, menu_items(whenmenu, true), mixed);
-  mixed = !same_text([](Widget_Node *widget) { return widget->user_data(); }, text);
+  mixed = !fields_equal_text(widgets, [](Widget_Node *widget) { return widget->user_data(); }, text);
   add_multiline(PROP_USER_DATA, "User Data", text, mixed);
-  mixed = !same_text([](Widget_Node *widget) { return widget->user_data_type(); }, text);
+  mixed = !fields_equal_text(widgets, [](Widget_Node *widget) { return widget->user_data_type(); }, text);
   add_text(PROP_USER_DATA_TYPE, "User Data Type", text, mixed);
-  mixed = !same_int([](Widget_Node *widget) { return widget->is_public(); }, number);
+  mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->is_public(); }, number);
   add_choice(PROP_ACCESS, "Access", number, std::vector<std::pair<std::string, int>>{
     {std::string(ui_text("private")), 0},
     {std::string(ui_text("public")), 1},
     {std::string(ui_text("protected")), 2}}, mixed);
 
   if (same_subtypes && subtypes && subtypes->text) {
-    mixed = !same_int([](Widget_Node *widget) { return widget->o->type(); }, number);
+    mixed = !fields_equal_int(widgets, [](Widget_Node *widget) { return widget->o->type(); }, number);
     add_choice(PROP_TYPE, "Type", number, menu_items(subtypes, false), mixed);
   }
   if (all_text) {
@@ -1150,18 +1155,18 @@ void Property_Page::load_many(const std::vector<Widget_Node *> &widgets) {
     add_real(PROP_STEP, "Step", first->step(), !same_step);
   }
   if (all_input) {
-    mixed = !same_int([](Widget_Node *widget) {
+    mixed = !fields_equal_int(widgets, [](Widget_Node *widget) {
       return static_cast<Fl_Input_ *>(widget->o)->maximum_size();
     }, number);
     add_int(PROP_MAX_SIZE, "Maximum Length", number, mixed);
   }
   if (all_windows) {
-    mixed = !same_int([](Widget_Node *widget) {
+    mixed = !fields_equal_int(widgets, [](Widget_Node *widget) {
       return static_cast<Window_Node *>(widget)->modal;
     }, number);
     add_choice(PROP_MODAL, "Modal", number, std::vector<std::pair<std::string, int>>{
       {std::string(ui_text("No")), 0}, {std::string(ui_text("Yes")), 1}}, mixed);
-    mixed = !same_int([](Widget_Node *widget) {
+    mixed = !fields_equal_int(widgets, [](Widget_Node *widget) {
       return static_cast<Window_Node *>(widget)->non_modal;
     }, number);
     add_choice(PROP_NON_MODAL, "Non Modal", number, std::vector<std::pair<std::string, int>>{
