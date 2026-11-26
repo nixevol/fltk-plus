@@ -215,9 +215,13 @@ public:
   std::vector<std::string> picker_labels;
   std::vector<Fl_Menu_Item> picker_items;
   struct Row {
-    Fl_Widget *label = nullptr;
-    Fl_Widget *editor = nullptr;
-    Fl_Widget *extra = nullptr;
+    Fl_Widget *label;
+    Fl_Widget *editor;
+    Fl_Widget *extra;
+    // C++11 does not treat a class with default member values as an aggregate.
+    Row() : label(nullptr), editor(nullptr), extra(nullptr) {}
+    Row(Fl_Widget *label, Fl_Widget *editor, Fl_Widget *extra)
+      : label(label), editor(editor), extra(extra) {}
   };
   std::vector<Row> rows_;
 

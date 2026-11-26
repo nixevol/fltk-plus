@@ -31,7 +31,6 @@
 #include <FL/Fl_Scroll.H>
 #include <FL/Fl_Window.H>
 #include <FL/fl_draw.H>
-#include "../../src/Fl_Window_Driver.H"
 
 #include <algorithm>
 #include <cctype>
@@ -396,15 +395,14 @@ bool DeskPane::extent(int &cw, int &ch) {
 }
 
 // A child window does not receive WM_DPICHANGED when it moves to another screen. When the logical size is unchanged, an ordinary resize does not change the pixel size,
-// but drawing already uses the new scale, so widgets are drawn past the window and clipped. Force the pixel size to the current scale.
+// but drawing already uses the new scale, so widgets are drawn past the window and clipped.
+// Fl_Window_Driver::is_a_rescale() writes a private static that the shared Windows library does not export, so a one-pixel change forces the buffer to update.
 void pin_window(Fl_Window *window, int x, int y, int w, int h, bool rescale) {
   if (!window) return;
   bool saved = g_pinning;
   g_pinning = true;
-  Fl_Window_Driver *driver = Fl_Window_Driver::driver(window);
-  if (rescale && driver) driver->is_a_rescale(true);
+  if (rescale && w > 0) window->resize(x, y, std::max(1, w + 1), h);
   window->resize(x, y, w, h);
-  if (rescale && driver) driver->is_a_rescale(false);
   g_pinning = saved;
 }
 
