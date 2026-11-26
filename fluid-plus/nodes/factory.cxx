@@ -58,7 +58,6 @@
 #include <FL/Fl_Counter.H>
 #include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Chart.H>
-#include <FL/Fl_Positioner.H>
 #include <FL/Fl_Shortcut_Button.H>
 #include <FL/Fl_Time_Input.H>
 #include <FL/Fl_Dial.H>
@@ -1230,66 +1229,6 @@ public:
 Chart_Node Chart_Node::prototype;
 
 
-// ---- Positioner ----
-
-class Positioner_Node : public Widget_Node
-{
-public:
-  typedef Widget_Node super;
-  static Positioner_Node prototype;
-public:
-  void ideal_size(int &w, int &h) override {
-    w = 80; h = 80;
-    fluid::app::Snap_Action::better_size(w, h);
-  }
-  const std::string& type_name() override { static const std::string s = "Fl_Positioner"; return s; }
-  const std::string& alt_type_name() override { static const std::string s = "fltk::Positioner"; return s; }
-  Fl_Widget *widget(int x, int y, int w, int h) override {
-    return new Fl_Positioner(x, y, w, h);
-  }
-  Widget_Node *_make() override { return new Positioner_Node(); }
-  void write_properties(fluid::io::Project_Writer &f) override {
-    super::write_properties(f);
-    Fl_Positioner *pos = (Fl_Positioner *)o;
-    if (pos->xvalue() != 0.5 || pos->yvalue() != 0.5)
-      f.write_string("xyvalue %g %g", pos->xvalue(), pos->yvalue());
-    if (pos->xminimum() != 0 || pos->xmaximum() != 1)
-      f.write_string("xbounds %g %g", pos->xminimum(), pos->xmaximum());
-    if (pos->yminimum() != 0 || pos->ymaximum() != 1)
-      f.write_string("ybounds %g %g", pos->yminimum(), pos->ymaximum());
-  }
-  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
-    Fl_Positioner *pos = (Fl_Positioner *)o;
-    if (c == "xyvalue") {
-      double x = atof(f.read_word().c_str());
-      double y = atof(f.read_word().c_str());
-      pos->value(x, y);
-    } else if (c == "xbounds") {
-      double a = atof(f.read_word().c_str());
-      double b = atof(f.read_word().c_str());
-      pos->xbounds(a, b);
-    } else if (c == "ybounds") {
-      double a = atof(f.read_word().c_str());
-      double b = atof(f.read_word().c_str());
-      pos->ybounds(a, b);
-    } else {
-      super::read_property(f, c);
-    }
-  }
-  void copy_properties() override {
-    super::copy_properties();
-    Fl_Positioner *source = (Fl_Positioner *)o;
-    Fl_Positioner *dest = (Fl_Positioner *)live_widget;
-    if (!source || !dest) return;
-    dest->xbounds(source->xminimum(), source->xmaximum());
-    dest->ybounds(source->yminimum(), source->ymaximum());
-    dest->value(source->xvalue(), source->yvalue());
-  }
-};
-
-Positioner_Node Positioner_Node::prototype;
-
-
 // ---- Shortcut button ----
 
 class Shortcut_Button_Node : public Widget_Node
@@ -1430,7 +1369,6 @@ static Node *known_types[] = {
   (Node*)&Date_Input_Node::prototype,
   (Node*)&Time_Input_Node::prototype,
   (Node*)&Chart_Node::prototype,
-  (Node*)&Positioner_Node::prototype,
   (Node*)&Shortcut_Button_Node::prototype,
 };
 
@@ -1689,7 +1627,6 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Roller_Node::prototype},
   {nullptr,0,cb,(void*)&Value_Input_Node::prototype},
   {nullptr,0,cb,(void*)&Value_Output_Node::prototype},
-  {nullptr,0,cb,(void*)&Positioner_Node::prototype},
   {nullptr},
   {"Text",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Input_Node::prototype},

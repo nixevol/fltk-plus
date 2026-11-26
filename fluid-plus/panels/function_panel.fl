@@ -315,13 +315,6 @@ else
         code3 {o->image(pixmap_for("Fl_Value_Input"));}
         class {fluid::widget::Bin_Button}
       }
-      Fl_Button {} {
-        user_data {"Fl_Positioner"}
-        callback type_make_cb
-        tooltip Positioner xywh {307 71 24 24} box THIN_UP_BOX
-        code3 {o->image(pixmap_for("Fl_Positioner"));}
-        class {fluid::widget::Bin_Button}
-      }
     }
     Fl_Group {} {
       label Text open

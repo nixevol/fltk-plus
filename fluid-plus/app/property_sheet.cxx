@@ -23,7 +23,6 @@
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Chart.H>
-#include <FL/Fl_Positioner.H>
 #include <FL/Fl_Shortcut_Button.H>
 #include <FL/Fl_Time_Input.H>
 #include <FL/fl_draw.H>
@@ -139,12 +138,6 @@ enum Prop {
   PROP_AUTOSIZE,
   PROP_LOWER_BOUND,
   PROP_UPPER_BOUND,
-  PROP_X_VALUE,
-  PROP_Y_VALUE,
-  PROP_X_MINIMUM,
-  PROP_X_MAXIMUM,
-  PROP_Y_MINIMUM,
-  PROP_Y_MAXIMUM,
   PROP_RECORDED_KEY
 };
 
@@ -881,14 +874,6 @@ void Property_Page::add_widget_rows(Widget_Node *widget) {
     add_real(PROP_LOWER_BOUND, "Lower Bound", lower);
     add_real(PROP_UPPER_BOUND, "Upper Bound", upper);
   }
-  if (auto *pos = dynamic_cast<Fl_Positioner *>(box)) {
-    add_real(PROP_X_VALUE, "X Value", pos->xvalue());
-    add_real(PROP_Y_VALUE, "Y Value", pos->yvalue());
-    add_real(PROP_X_MINIMUM, "X Minimum", pos->xminimum());
-    add_real(PROP_X_MAXIMUM, "X Maximum", pos->xmaximum());
-    add_real(PROP_Y_MINIMUM, "Y Minimum", pos->yminimum());
-    add_real(PROP_Y_MAXIMUM, "Y Maximum", pos->ymaximum());
-  }
   if (auto *key = dynamic_cast<Fl_Shortcut_Button *>(box)) {
     const char *shown = fl_shortcut_label(key->value());
     add_text(PROP_RECORDED_KEY, "Recorded Shortcut", shown ? shown : "");
@@ -1443,23 +1428,6 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
       if (prop == PROP_LOWER_BOUND) lower = real->value();
       else upper = real->value();
       chart->bounds(lower, upper);
-    }
-    break;
-  case PROP_X_VALUE:
-  case PROP_Y_VALUE:
-  case PROP_X_MINIMUM:
-  case PROP_X_MAXIMUM:
-  case PROP_Y_MINIMUM:
-  case PROP_Y_MAXIMUM:
-    if (auto *pos = dynamic_cast<Fl_Positioner *>(box)) {
-      if (!real) return;
-      double number_value = real->value();
-      if (prop == PROP_X_VALUE) pos->xvalue(number_value);
-      else if (prop == PROP_Y_VALUE) pos->yvalue(number_value);
-      else if (prop == PROP_X_MINIMUM) pos->xbounds(number_value, pos->xmaximum());
-      else if (prop == PROP_X_MAXIMUM) pos->xbounds(pos->xminimum(), number_value);
-      else if (prop == PROP_Y_MINIMUM) pos->ybounds(number_value, pos->ymaximum());
-      else pos->ybounds(pos->yminimum(), number_value);
     }
     break;
   case PROP_RECORDED_KEY:
