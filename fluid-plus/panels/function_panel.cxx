@@ -264,7 +264,7 @@ Fl_Window* make_widgetbin() {
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o
-    { auto* o = new Fl_Group(171, 19, 54, 79, "Buttons");
+    { auto* o = new Fl_Group(171, 19, 54, 110, "Buttons");
       (void)o;
       o->labelsize(12);
       { auto* o = new fluid::widget::Bin_Button(173, 21, 24, 24);
@@ -356,6 +356,21 @@ Fl_Window* make_widgetbin() {
         o->align(Fl_Align(FL_ALIGN_CENTER));
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Round_Button"));
+      } // fluid::widget::Bin_Button* o
+      { auto* o = new fluid::widget::Bin_Button(173, 96, 24, 24);
+        (void)o;
+        o->tooltip("Switch");
+        o->box(FL_THIN_UP_BOX);
+        o->color(FL_BACKGROUND_COLOR);
+        o->selection_color(FL_BACKGROUND_COLOR);
+        o->labeltype(FL_NORMAL_LABEL);
+        o->labelfont(0);
+        o->labelsize(14);
+        o->labelcolor(FL_FOREGROUND_COLOR);
+        o->callback((Fl_Callback*)type_make_cb, (void*)("Fl_Switch"));
+        o->align(Fl_Align(FL_ALIGN_CENTER));
+        o->when(FL_WHEN_RELEASE);
+        o->image(pixmap_for("Fl_Switch"));
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o
@@ -951,6 +966,26 @@ Fl_Window* make_widgetbin() {
         o->align(Fl_Align(FL_ALIGN_CENTER));
         o->when(FL_WHEN_RELEASE);
         o->image(pixmap_for("Fl_Shortcut_Button"));
+      } // fluid::widget::Bin_Button* o
+      o->end();
+    } // Fl_Group* o
+    { auto* o = new Fl_Group(133, 140, 30, 40, "Colors");
+      (void)o;
+      o->labelsize(12);
+      { auto* o = new fluid::widget::Bin_Button(135, 156, 24, 24);
+        (void)o;
+        o->tooltip("Color Button");
+        o->box(FL_THIN_UP_BOX);
+        o->color(FL_BACKGROUND_COLOR);
+        o->selection_color(FL_BACKGROUND_COLOR);
+        o->labeltype(FL_NORMAL_LABEL);
+        o->labelfont(0);
+        o->labelsize(14);
+        o->labelcolor(FL_FOREGROUND_COLOR);
+        o->callback((Fl_Callback*)type_make_cb, (void*)("Fl_Color_Button"));
+        o->align(Fl_Align(FL_ALIGN_CENTER));
+        o->when(FL_WHEN_RELEASE);
+        o->image(pixmap_for("Fl_Color_Button"));
       } // fluid::widget::Bin_Button* o
       o->end();
     } // Fl_Group* o

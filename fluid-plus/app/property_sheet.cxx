@@ -23,7 +23,9 @@
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Chart.H>
+#include <FL/Fl_Color_Button.H>
 #include <FL/Fl_Shortcut_Button.H>
+#include <FL/Fl_Switch.H>
 #include <FL/Fl_Time_Input.H>
 #include <FL/fl_draw.H>
 
@@ -157,7 +159,9 @@ enum Prop {
   PROP_AUTOSIZE,
   PROP_LOWER_BOUND,
   PROP_UPPER_BOUND,
-  PROP_RECORDED_KEY
+  PROP_RECORDED_KEY,
+  PROP_SWITCH_ON,
+  PROP_COLOR_VALUE
 };
 
 struct NamedColor {
@@ -901,6 +905,13 @@ void Property_Page::add_widget_rows(Widget_Node *widget) {
     const char *shown = fl_shortcut_label(key->value());
     add_text(PROP_RECORDED_KEY, "Recorded Shortcut", shown ? shown : "");
   }
+  if (auto *sw = dynamic_cast<Fl_Switch *>(box))
+    add_switch(PROP_SWITCH_ON, "Switch On", sw->value() != 0);
+  if (auto *swatch = dynamic_cast<Fl_Color_Button *>(box)) {
+    char hex[8];
+    swatch->format(hex);
+    add_text(PROP_COLOR_VALUE, "Color Value", hex);
+  }
   if (auto *window = dynamic_cast<Window_Node *>(widget)) {
     add_switch(PROP_MODAL, "Modal", window->modal != 0);
     add_switch(PROP_NON_MODAL, "Non Modal", window->non_modal != 0);
@@ -1449,6 +1460,19 @@ void Property_Page::apply(Prop prop, Fl_Widget *editor) {
           shortcut = fl_old_shortcut(text.c_str());
       }
       key->value(shortcut);
+    }
+    break;
+  case PROP_SWITCH_ON:
+    if (auto *sw = dynamic_cast<Fl_Switch *>(box)) sw->value(yes ? 1 : 0);
+    break;
+  case PROP_COLOR_VALUE:
+    if (auto *swatch = dynamic_cast<Fl_Color_Button *>(box)) {
+      if (!swatch->rgb(text.c_str())) {
+        char hex[8];
+        swatch->format(hex);
+        if (input) input->value(hex);
+        return;
+      }
     }
     break;
   case PROP_WEEKDAYS:

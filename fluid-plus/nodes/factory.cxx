@@ -58,7 +58,9 @@
 #include <FL/Fl_Counter.H>
 #include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Chart.H>
+#include <FL/Fl_Color_Button.H>
 #include <FL/Fl_Shortcut_Button.H>
+#include <FL/Fl_Switch.H>
 #include <FL/Fl_Time_Input.H>
 #include <FL/Fl_Dial.H>
 #include <FL/Fl_File_Browser.H>
@@ -1271,6 +1273,96 @@ public:
 
 Shortcut_Button_Node Shortcut_Button_Node::prototype;
 
+// ---- Switch ----
+
+class Switch_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Switch_Node prototype;
+public:
+  void ideal_size(int &w, int &h) override {
+    w = 56; h = 24;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Switch"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::Switch"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    return new Fl_Switch(x, y, w, h);
+  }
+  Widget_Node *_make() override { return new Switch_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Switch *sw = (Fl_Switch *)o;
+    if (sw->value()) f.write_string("switch_on 1");
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    if (c == "switch_on") {
+      ((Fl_Switch *)o)->value(atoi(f.read_word().c_str()) ? 1 : 0);
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Switch *source = (Fl_Switch *)o;
+    Fl_Switch *dest = (Fl_Switch *)live_widget;
+    if (source && dest) dest->value(source->value());
+  }
+};
+
+Switch_Node Switch_Node::prototype;
+
+// ---- Color button ----
+
+class Color_Button_Node : public Widget_Node
+{
+public:
+  typedef Widget_Node super;
+  static Color_Button_Node prototype;
+public:
+  void ideal_size(int &w, int &h) override {
+    w = 80; h = 24;
+    fluid::app::Snap_Action::better_size(w, h);
+  }
+  const std::string& type_name() override { static const std::string s = "Fl_Color_Button"; return s; }
+  const std::string& alt_type_name() override { static const std::string s = "fltk::ColorButton"; return s; }
+  Fl_Widget *widget(int x, int y, int w, int h) override {
+    return new Fl_Color_Button(x, y, w, h);
+  }
+  Widget_Node *_make() override { return new Color_Button_Node(); }
+  void write_properties(fluid::io::Project_Writer &f) override {
+    super::write_properties(f);
+    Fl_Color_Button *button = (Fl_Color_Button *)o;
+    if (button->red() != 51 || button->green() != 102 || button->blue() != 204)
+      f.write_string("rgb %u %u %u", button->red(), button->green(), button->blue());
+  }
+  void read_property(fluid::io::Project_Reader &f, const std::string &c) override {
+    if (c == "rgb") {
+      int red = atoi(f.read_word().c_str());
+      int green = atoi(f.read_word().c_str());
+      int blue = atoi(f.read_word().c_str());
+      if (red < 0) red = 0;
+      if (green < 0) green = 0;
+      if (blue < 0) blue = 0;
+      if (red > 255) red = 255;
+      if (green > 255) green = 255;
+      if (blue > 255) blue = 255;
+      ((Fl_Color_Button *)o)->rgb((unsigned char)red, (unsigned char)green, (unsigned char)blue);
+    } else {
+      super::read_property(f, c);
+    }
+  }
+  void copy_properties() override {
+    super::copy_properties();
+    Fl_Color_Button *source = (Fl_Color_Button *)o;
+    Fl_Color_Button *dest = (Fl_Color_Button *)live_widget;
+    if (source && dest) dest->rgb(source->red(), source->green(), source->blue());
+  }
+};
+
+Color_Button_Node Color_Button_Node::prototype;
+
 // ---- Spinner ----
 // (Spinner_Node and its spinner_type_menu are declared in factory.h so other
 // translation units can dynamic_cast to Spinner_Node.)
@@ -1370,6 +1462,8 @@ static Node *known_types[] = {
   (Node*)&Time_Input_Node::prototype,
   (Node*)&Chart_Node::prototype,
   (Node*)&Shortcut_Button_Node::prototype,
+  (Node*)&Switch_Node::prototype,
+  (Node*)&Color_Button_Node::prototype,
 };
 
 /**
@@ -1615,6 +1709,7 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Check_Button_Node::prototype},
   {nullptr,0,cb,(void*)&Repeat_Button_Node::prototype},
   {nullptr,0,cb,(void*)&Round_Button_Node::prototype},
+  {nullptr,0,cb,(void*)&Switch_Node::prototype},
   {nullptr},
   {"Valuators",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Slider_Node::prototype},
@@ -1668,6 +1763,9 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr},
   {"Shortcuts",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Shortcut_Button_Node::prototype},
+  {nullptr},
+  {"Colors",0,nullptr,nullptr,FL_SUBMENU},
+  {nullptr,0,cb,(void*)&Color_Button_Node::prototype},
   {nullptr},
   {nullptr}};
 

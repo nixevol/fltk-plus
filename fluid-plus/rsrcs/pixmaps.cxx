@@ -71,7 +71,9 @@
 #include "../pixmaps/flDateInput.xpm"
 #include "../pixmaps/flTimeInput.xpm"
 #include "../pixmaps/flChart.xpm"
+#include "../pixmaps/flColorButton.xpm"
 #include "../pixmaps/flShortcutButton.xpm"
+#include "../pixmaps/flSwitch.xpm"
 #include "../pixmaps/flSlider.xpm"
 #include "../pixmaps/flScrollBar.xpm"
 #include "../pixmaps/flValueSlider.xpm"
@@ -212,7 +214,9 @@ void loadPixmaps()
   pixmaps["Fl_Date_Input"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flDateInput_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Time_Input"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flTimeInput_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Chart"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flChart_xpm)); tmp->scale(16, 16);
+  pixmaps["Fl_Color_Button"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flColorButton_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Shortcut_Button"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flShortcutButton_xpm)); tmp->scale(16, 16);
+  pixmaps["Fl_Switch"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flSwitch_xpm)); tmp->scale(16, 16);
 
   pixmaps["Fl_Slider"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flSlider_xpm)); tmp->scale(16, 16);
   pixmaps["Fl_Scrollbar"] = std::unique_ptr<Fl_Pixmap>(tmp = new Fl_Pixmap(flScrollBar_xpm)); tmp->scale(16, 16);

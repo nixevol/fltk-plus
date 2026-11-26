@@ -42,6 +42,7 @@ set(CPPFILES
   Fl_Check_Button.cxx
   Fl_Choice.cxx
   Fl_Clock.cxx
+  Fl_Color_Button.cxx
   Fl_Color_Chooser.cxx
   Fl_Copy_Surface.cxx
   Fl_Counter.cxx
@@ -97,6 +98,7 @@ set(CPPFILES
   Fl_Single_Window.cxx
   Fl_Slider.cxx
   Fl_Spinner.cxx
+  Fl_Switch.cxx
   Fl_Sys_Menu_Bar.cxx
   Fl_System_Driver.cxx
   Fl_Table.cxx

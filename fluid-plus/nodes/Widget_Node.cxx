@@ -45,7 +45,9 @@
 #include <FL/Fl_Flex.H>
 #include <FL/Fl_Date_Input.H>
 #include <FL/Fl_Chart.H>
+#include <FL/Fl_Color_Button.H>
 #include <FL/Fl_Shortcut_Button.H>
+#include <FL/Fl_Switch.H>
 #include <FL/Fl_Time_Input.H>
 #include "../../src/flstring.h"
 
@@ -1214,6 +1216,15 @@ void Widget_Node::write_widget_code(fluid::io::Code_Writer& f) {
   if (auto *key = dynamic_cast<Fl_Shortcut_Button *>(o)) {
     if (key->value())
       f.write_c(f.indent() + var + "->value(" + std::to_string(key->value()) + ");\n");
+  }
+  if (auto *sw = dynamic_cast<Fl_Switch *>(o)) {
+    if (sw->value())
+      f.write_c(f.indent() + var + "->value(1);\n");
+  }
+  if (auto *swatch = dynamic_cast<Fl_Color_Button *>(o)) {
+    if (swatch->red() != 51 || swatch->green() != 102 || swatch->blue() != 204)
+      f.write_c(f.indent() + var + "->rgb(" + std::to_string((int)swatch->red()) + ", " +
+                std::to_string((int)swatch->green()) + ", " + std::to_string((int)swatch->blue()) + ");\n");
   }
 }
 
