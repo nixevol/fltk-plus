@@ -1677,7 +1677,6 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr,0,cb,(void*)&Check_Button_Node::prototype},
   {nullptr,0,cb,(void*)&Repeat_Button_Node::prototype},
   {nullptr,0,cb,(void*)&Round_Button_Node::prototype},
-  {nullptr,0,cb,(void*)&Shortcut_Button_Node::prototype},
   {nullptr},
   {"Valuators",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Slider_Node::prototype},
@@ -1729,6 +1728,9 @@ Fl_Menu_Item New_Menu[] = {
   {nullptr},
   {"Charts",0,nullptr,nullptr,FL_SUBMENU},
   {nullptr,0,cb,(void*)&Chart_Node::prototype},
+  {nullptr},
+  {"Shortcuts",0,nullptr,nullptr,FL_SUBMENU},
+  {nullptr,0,cb,(void*)&Shortcut_Button_Node::prototype},
   {nullptr},
   {nullptr}};
 

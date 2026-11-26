@@ -196,7 +196,7 @@ else
     }
     Fl_Group {} {
       label Buttons open
-      xywh {171 19 54 110} labelsize 12
+      xywh {171 19 54 79} labelsize 12
     } {
       Fl_Button {} {
         user_data {"Fl_Button"}
@@ -238,13 +238,6 @@ else
         callback type_make_cb
         tooltip {Round Button} xywh {198 71 24 24} box THIN_UP_BOX
         code3 {o->image(pixmap_for("Fl_Round_Button"));}
-        class {fluid::widget::Bin_Button}
-      }
-      Fl_Button {} {
-        user_data {"Fl_Shortcut_Button"}
-        callback type_make_cb
-        tooltip {Shortcut Button} xywh {173 96 24 24} box THIN_UP_BOX
-        code3 {o->image(pixmap_for("Fl_Shortcut_Button"));}
         class {fluid::widget::Bin_Button}
       }
     }
@@ -539,6 +532,18 @@ else
         callback type_make_cb
         tooltip Chart xywh {65 156 24 24} box THIN_UP_BOX
         code3 {o->image(pixmap_for("Fl_Chart"));}
+        class {fluid::widget::Bin_Button}
+      }
+    }
+    Fl_Group {} {
+      label Shortcuts open
+      xywh {98 140 30 40} labelsize 12
+    } {
+      Fl_Button {} {
+        user_data {"Fl_Shortcut_Button"}
+        callback type_make_cb
+        tooltip {Shortcut Button} xywh {100 156 24 24} box THIN_UP_BOX
+        code3 {o->image(pixmap_for("Fl_Shortcut_Button"));}
         class {fluid::widget::Bin_Button}
       }
     }
